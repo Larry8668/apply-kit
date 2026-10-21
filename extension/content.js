@@ -119,6 +119,7 @@
     const hit = norm.find(x => x.l === v)
       || (!v.includes(" ") && norm.find(x => firstWord(x.l) === v))
       || norm.find(x => x.l.startsWith(v + " ") || v.startsWith(x.l + " "))
+      || (/^\d+$/.test(v) && norm.find(x => x.l.split(" ").includes(v))) // "+91" → "India (+91)"
       || (v.length > 3 && norm.find(x => x.l.includes(v)));
     return hit ? hit.o : null;
   }
