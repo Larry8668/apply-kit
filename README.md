@@ -4,11 +4,12 @@ A personal Firefox extension that fills job applications from a profile you keep
 
 ## What it does
 
-- **Fill button.** On pages that look like job applications (Greenhouse, Lever, Workday, Ashby, company career pages, and similar), a "Fill N fields" button appears in the bottom-right corner. Tapping it fills every empty field it recognises and highlights them in yellow. It never overwrites anything you've already typed, and it never submits the form.
+- **Review, then fill.** On pages that look like job applications (Greenhouse, Lever, Workday, Ashby, company career pages, and similar), a "Review N fields" button appears in the bottom-right corner. It opens a panel listing every field it would fill and the value it would use. Untick anything you don't want, tap the target icon to find a field on the page, then tap "Fill". Afterwards the panel shows what was filled, with Undo. Filled fields are highlighted in yellow. It never overwrites anything you've already typed, and it never submits the form.
+- **Hidden fields stay empty unless you tick them.** Fields you can't see (tiny, transparent, off-screen, or clipped away) are listed separately under "Hidden on the page" and start unticked, so a page can't quietly collect more than it shows.
 - **Suggestions as you go.** When you tap into a field, a small box offers the matching profile value, plus up to three saved answers if the field is a longer question.
 - **Saved answers.** After writing an answer to a question like "Why do you want to work here?", tap "Save as answer". Questions with similar wording on later forms get it as a suggestion.
 - **Extra fields.** For anything the profile doesn't cover, such as EEO questions or referral codes, add a name, some label keywords, and a value in settings.
-- **Toolbar menu.** "Fill this page" forces filling on a page the extension didn't recognise as an application. "Edit profile" opens settings.
+- **Toolbar menu.** "Fill this page" works on any page, including ones not recognised as an application. It reviews every part of the page in one list, grouped by site. Forms embedded from known application platforms start ticked. Anything from an unrelated site, like an ad, is flagged "Other site" and starts unticked. "Edit profile" opens settings.
 
 ## Try it on desktop (temporary)
 
