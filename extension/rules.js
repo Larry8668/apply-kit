@@ -45,3 +45,15 @@ function normalize(s) {
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
 }
+
+// Hosted application platforms. Their forms are often embedded in a company's
+// careers page as an iframe from another site, which is expected.
+var PLATFORM = /(^|\.)(greenhouse\.io|lever\.co|myworkdayjobs\.com|myworkdaysite\.com|workday\.com|ashbyhq\.com|smartrecruiters\.com|icims\.com|taleo\.net|bamboohr\.com|jobvite\.com|workable\.com|teamtailor\.com|personio\.(de|com)|successfactors\.(com|eu)|wellfound\.com|rippling\.com|rippling-ats\.com)$/u;
+
+// Rough "same site" check: jobs.acme.com and acme.com match, and so do
+// a.acme.co.uk and b.acme.co.uk.
+function siteOf(host) {
+  const p = String(host || "").toLowerCase().split(".");
+  const n = p.length > 2 && p[p.length - 1].length === 2 && p[p.length - 2].length <= 3 ? 3 : 2;
+  return p.slice(-n).join(".");
+}

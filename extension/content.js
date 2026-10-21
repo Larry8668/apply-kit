@@ -128,6 +128,33 @@
     el.tagName === "TEXTAREA" || el.tagName === "SELECT" ||
     (el.tagName === "INPUT" && TEXTY.has((el.getAttribute("type") || "").toLowerCase())));
 
+  // Rendered, but you couldn't actually see it: tiny, see-through, pushed off the page, or
+  // clipped away by a parent. A page can use fields like this to collect details you never
+  // meant to give it, so these are only filled if you tick them in the review panel.
+  function concealed(el) {
+    const r = el.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4) return true;
+    if (r.right + scrollX <= 0 || r.bottom + scrollY <= 0) return true;
+    let opacity = 1;
+    for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
+      const cs = getComputedStyle(n);
+      opacity *= parseFloat(cs.opacity) || 0;
+      if (opacity < 0.1) return true;
+      if (n !== el && n !== document.body && /hidden|clip/.test(cs.overflowX + cs.overflowY)) {
+        const p = n.getBoundingClientRect();
+        if (r.right <= p.left || r.left >= p.right || r.bottom <= p.top || r.top >= p.bottom) return true;
+      }
+    }
+    return false;
+  }
+  // Styled radio buttons often hide the real input and show only the label.
+  const radioSeen = r => [r, ...(r.labels || [])].some(n => visible(n) && !concealed(n));
+
+  // Stable ids, so the review panel and toolbar menu can say which fields to fill.
+  const ids = new WeakMap();
+  let nextId = 1;
+  const idOf = el => { if (!ids.has(el)) ids.set(el, nextId++); return ids.get(el); };
+
   // Every field on the page we know how to fill and that is still empty.
   function scan() {
     const out = [];
@@ -146,20 +173,27 @@
       const m = classify(hintsFor(el, label), el);
       const value = valueFor(m);
       if (!value) continue;
+      // A <label> wrapped around a <select> also contains every option's text; drop it for display.
+      const asks = el.tagName === "SELECT" ? clean([...el.options].reduce((t, o) => t.replace(clean(o.text), ""), label)) : label;
+      const base = { id: idOf(el), el, field: m.name, label: asks, hidden: concealed(el) };
       if (el.tagName === "SELECT") {
         if (el.selectedIndex > 0 && el.value) continue;
         const option = pickOption([...el.options].map(o => ({ label: o.text, o })), value);
-        if (option) out.push({ kind: "select", el, option: option.o });
+        if (option) out.push({ ...base, kind: "select", value: option.o.value, shown: option.o.text });
       } else if (!el.value.trim()) {
-        out.push({ kind: "text", el, value });
+        out.push({ ...base, kind: "text", value, shown: value });
       }
     }
     for (const radios of groups.values()) {
       if (radios.length < 2 || radios.some(r => r.checked)) continue;
       const q = groupQuestion(radios);
-      const value = valueFor(classify([normalize(q)], null));
+      const m = classify([normalize(q)], null);
+      const value = valueFor(m);
       const option = value && pickOption(radios.map(r => ({ label: optionLabel(r), el: r })), value);
-      if (option) out.push({ kind: "radio", el: option.el });
+      if (option) {
+        out.push({ id: idOf(option.el), kind: "radio", el: option.el, field: m.name, label: q,
+          value: option.el.value, shown: option.label, hidden: !radioSeen(option.el) });
+      }
     }
     return out;
   }
@@ -181,24 +215,70 @@
     setTimeout(() => { [el.style.outline, el.style.outlineOffset] = prev; }, 2500);
   }
 
-  function fillAll({ quietIfEmpty = false } = {}) {
+  const flashTarget = it => (it.kind === "radio" && it.el.labels && it.el.labels[0] ? it.el.labels[0] : it.el);
+  let lastFill = []; // what the latest fill changed, for Undo
+
+  // Fills the fields with these ids. Scanning again first means anything you've typed into
+  // since the review, or that the page removed, is left alone.
+  function fillIds(wanted) {
+    const want = new Set(wanted);
     filling = true;
-    let n = 0;
-    for (const m of scan()) {
-      if (m.kind === "text") setValue(m.el, m.value);
-      else if (m.kind === "select") setValue(m.el, m.option.value);
-      else if (m.kind === "radio") m.el.click();
-      m.el.dispatchEvent(new Event("blur"));
-      flash(m.kind === "radio" && m.el.labels && m.el.labels[0] ? m.el.labels[0] : m.el);
-      n++;
+    const done = [];
+    for (const it of scan()) {
+      if (!want.has(it.id)) continue;
+      const prev = it.el.value;
+      if (it.kind === "radio") it.el.click();
+      else setValue(it.el, it.value);
+      it.el.dispatchEvent(new Event("blur"));
+      flash(flashTarget(it));
+      done.push({ ...it, prev });
     }
     filling = false;
     hideChip();
-    if (n) toast(`Filled ${n} field${n === 1 ? "" : "s"}. Check them before you submit.`);
-    else if (!quietIfEmpty) toast("Nothing left to fill on this page.");
+    lastFill = done;
+    refreshFab();
+    return done;
+  }
+
+  // Puts back what was there before the latest fill, skipping fields you've changed since.
+  function undoLast() {
+    filling = true;
+    let n = 0;
+    for (const it of lastFill) {
+      if (!it.el.isConnected) continue;
+      if (it.kind === "radio") {
+        if (!it.el.checked) continue;
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked").set.call(it.el, false);
+        it.el.dispatchEvent(new Event("input", { bubbles: true }));
+        it.el.dispatchEvent(new Event("change", { bubbles: true }));
+      } else {
+        if (it.el.value !== it.value) continue;
+        setValue(it.el, it.prev);
+      }
+      n++;
+    }
+    filling = false;
+    lastFill = [];
     refreshFab();
     return n;
   }
+
+  // Where this copy of the script is running. Each frame on a page gets its own copy.
+  function frameInfo() {
+    const top = window === window.top;
+    let parent = "";
+    if (!top) {
+      try { parent = new URL(document.referrer).hostname; } catch { /* no referrer */ }
+    }
+    const host = location.hostname;
+    const platform = PLATFORM.test(host);
+    // A frame from some other site that isn't a known application platform, like an ad.
+    const foreign = !top && !platform && (!parent || siteOf(parent) !== siteOf(host));
+    return { top, host, parent, platform, foreign };
+  }
+
+  // What the toolbar menu needs to show a field, without the element itself.
+  const brief = it => ({ id: it.id, field: it.field, label: it.label, shown: it.shown, hidden: it.hidden });
 
   function fillOne(el, v) {
     filling = true;
@@ -270,7 +350,77 @@
     .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px));
       max-width: calc(100vw - 32px); background: #17212B; color: #fff; border-radius: 10px; padding: 10px 14px; font-size: 14px; }
     [hidden] { display: none !important; }
+
+    .panel { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+      width: min(380px, calc(100vw - 32px)); max-height: min(600px, calc(100vh - 32px));
+      display: flex; flex-direction: column; overflow: hidden; outline: none;
+      background: #fff; color: #17212B; border: 1px solid #D5DBE1; border-radius: 16px;
+      box-shadow: 0 16px 48px rgba(23,33,43,.24), 0 2px 6px rgba(23,33,43,.08);
+      font-size: 14px; line-height: 1.35; animation: rise .18s ease-out; }
+    @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+    @media (prefers-reduced-motion: reduce) { .panel { animation: none; } }
+    @media (max-width: 560px) {
+      .panel { left: 0; right: 0; bottom: 0; width: auto; max-height: 64vh; border-width: 1px 0 0;
+        border-radius: 18px 18px 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
+      .panel::before { content: ""; display: block; width: 36px; height: 4px; border-radius: 2px;
+        background: #D5DBE1; margin: 8px auto 0; flex: none; }
+    }
+    svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8;
+      stroke-linecap: round; stroke-linejoin: round; }
+    .head { display: flex; align-items: flex-start; gap: 12px; padding: 14px 12px 12px 18px; border-bottom: 1px solid #E6EAEE; flex: none; }
+    .head .badge { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: #F2B705; color: #17212B; flex: none; margin-top: 1px; }
+    .head .badge svg { stroke-width: 2.4; }
+    .title { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -.01em; }
+    .sub { margin: 2px 0 0; color: #5B6875; font-size: 13px; overflow-wrap: anywhere; }
+    .x { margin-left: auto; width: 34px; height: 34px; border-radius: 50%; border: 0; background: none; color: #5B6875;
+      display: grid; place-items: center; cursor: pointer; flex: none; }
+    .x:hover { background: #F3F5F7; color: #17212B; }
+    .list { overflow: auto; overscroll-behavior: contain; padding: 6px 8px 10px; flex: 1 1 auto; }
+    .sec { display: flex; align-items: center; gap: 6px; margin: 12px 10px 4px; font-size: 11.5px; font-weight: 700;
+      letter-spacing: .06em; text-transform: uppercase; color: #8A6300; }
+    .note { margin: 4px 6px 6px; padding: 9px 12px; border-radius: 10px; background: #FFF6DB; color: #5E4300; font-size: 12.5px; }
+    .row { display: flex; align-items: center; gap: 4px; border-radius: 12px; }
+    .row:hover { background: #F3F5F7; }
+    .pick { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 12px; padding: 9px 4px 9px 10px; border: 0;
+      background: none; color: inherit; text-align: left; cursor: pointer; border-radius: 12px; font-size: 14px; }
+    .box { width: 20px; height: 20px; margin-top: 1px; border-radius: 6px; border: 1.5px solid #9AA6B2; display: grid;
+      place-items: center; color: transparent; flex: none; transition: background .12s, border-color .12s; }
+    .box svg { width: 13px; height: 13px; stroke-width: 2.6; }
+    [aria-checked="true"] .box { background: #17212B; border-color: #17212B; color: #fff; }
+    .flag .box { border-color: #C99A00; }
+    .text { min-width: 0; display: grid; gap: 1px; }
+    .name { font-weight: 600; font-size: 13.5px; }
+    .valtext { color: #3B4752; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .asks { color: #5B6875; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    [aria-checked="false"] .valtext { color: #5B6875; }
+    .loc { width: 36px; height: 36px; border-radius: 50%; border: 0; background: none; color: #5B6875; display: grid;
+      place-items: center; cursor: pointer; flex: none; margin-right: 2px; }
+    .loc:hover { background: #E6EAEE; color: #17212B; }
+    .tick { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: #FFF1C2; color: #6B4E00; flex: none; margin-top: 1px; }
+    .tick svg { width: 12px; height: 12px; stroke-width: 2.6; }
+    .done .pick { cursor: default; }
+    .bar { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid #E6EAEE; flex: none; }
+    .btn { flex: 1; min-height: 44px; border-radius: 999px; border: 1px solid #D5DBE1; background: none; color: #17212B;
+      font-size: 14.5px; font-weight: 600; cursor: pointer; }
+    .btn.main { flex: 1.4; background: #17212B; border-color: #17212B; color: #fff; }
+    .btn:disabled { opacity: .4; cursor: default; }
+    .btn:focus-visible, .pick:focus-visible, .loc:focus-visible, .x:focus-visible { outline: 3px solid #F2B705; outline-offset: 1px; }
+
     @media (prefers-color-scheme: dark) {
+      .panel { background: #1A2128; color: #E6EBEF; border-color: #3A4652; box-shadow: 0 16px 48px rgba(0,0,0,.5); }
+      .panel::before { background: #3A4652; }
+      .head, .bar { border-color: #2C3640; }
+      .sub, .asks, .x, .loc, [aria-checked="false"] .valtext { color: #9AA6B2; }
+      .valtext { color: #C9D2DA; }
+      .x:hover, .row:hover { background: #232C35; color: #E6EBEF; }
+      .loc:hover { background: #2C3640; color: #E6EBEF; }
+      .sec { color: #F2B705; }
+      .note { background: #3A2F0F; color: #F6E3A8; }
+      .box { border-color: #6B7884; }
+      [aria-checked="true"] .box { background: #F2B705; border-color: #F2B705; color: #17212B; }
+      .tick { background: #3A2F0F; color: #F2B705; }
+      .btn { color: #E6EBEF; border-color: #3A4652; }
+      .btn.main { background: #F2B705; border-color: #F2B705; color: #17212B; }
       .chip { background: #1A2128; color: #E6EBEF; border-color: #3A4652; }
       .opt:hover, .opt:focus-visible { background: #232C35; }
       .what { color: #9AA6B2; }
@@ -288,10 +438,11 @@
     const host = document.createElement("div");
     host.style.cssText = "all:initial;position:absolute;top:0;left:0;width:0;height:0;z-index:2147483647;";
     const root = host.attachShadow({ mode: "closed" });
-    root.innerHTML = `<style>${CSS}</style><div class="chip" hidden></div><button class="fab" type="button" hidden></button><div class="toast" role="status" hidden></div>`;
+    root.innerHTML = `<style>${CSS}</style><div class="chip" hidden></div><button class="fab" type="button" hidden></button><div class="toast" role="status" hidden></div><div class="panel" role="dialog" aria-label="Apply Kit" tabindex="-1" hidden></div>`;
     document.documentElement.appendChild(host);
-    ui = { chip: root.querySelector(".chip"), fab: root.querySelector(".fab"), toast: root.querySelector(".toast") };
-    ui.fab.addEventListener("click", () => fillAll());
+    ui = { chip: root.querySelector(".chip"), fab: root.querySelector(".fab"), toast: root.querySelector(".toast"), panel: root.querySelector(".panel") };
+    ui.fab.addEventListener("click", () => openReview());
+    ui.panel.addEventListener("keydown", e => { if (e.key === "Escape") closePanel(); });
     ui.chip.addEventListener("mousedown", e => e.preventDefault()); // keep focus in the form field
     ui.chip.addEventListener("pointerdown", () => { chipBusy = true; });
     return ui;
@@ -333,7 +484,7 @@
   }
 
   function showChipFor(el) {
-    if (!active() || !isField(el)) return hideChip();
+    if (!active() || !isField(el) || (ui && !ui.panel.hidden)) return hideChip();
     const label = labelFor(el);
     const items = [];
 
@@ -368,6 +519,129 @@
     place();
   }
 
+  // ---------- Review panel ----------
+  // Bulk filling always goes through here: you see every field and value first, and
+  // hidden fields or fields in a frame from another site start unticked.
+  const PATH = {
+    check: "M3.5 8.5l3 3 6-7",
+    close: "M4 4l8 8M12 4l-8 8",
+    locate: "M8 1.5v2.5M8 12v2.5M1.5 8H4M12 8h2.5M8 5a3 3 0 1 1 0 6a3 3 0 1 1 0-6",
+    warn: "M8 2.2l6.3 11.3H1.7zM8 6.6v3.2M8 11.7v.1"
+  };
+  function icon(d) {
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", "0 0 16 16");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS(NS, "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+    return svg;
+  }
+  function make(tag, cls, ...kids) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    e.append(...kids.filter(k => k != null));
+    return e;
+  }
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+  function head(title, sub, badge) {
+    const close = button("x", "", closePanel);
+    close.setAttribute("aria-label", "Close");
+    close.append(icon(PATH.close));
+    return make("div", "head", badge ? make("span", "badge", icon(PATH.check)) : null,
+      make("div", "", make("h2", "title", title), make("p", "sub", sub)), close);
+  }
+
+  function locate(it) {
+    const target = flashTarget(it);
+    const narrow = innerWidth <= 560;
+    // On a phone the panel covers the bottom of the screen, so bring the field near the top.
+    target.scrollIntoView({ block: narrow ? "start" : "center" });
+    if (narrow) scrollBy(0, -innerHeight * 0.15);
+    flash(target);
+  }
+
+  function fieldRow(it, picked, onToggle) {
+    const pick = button("pick", "", () => {
+      if (!picked) return;
+      if (picked.has(it.id)) picked.delete(it.id); else picked.add(it.id);
+      pick.setAttribute("aria-checked", String(picked.has(it.id)));
+      onToggle();
+    });
+    const text = make("span", "text", make("span", "name", it.field), make("span", "valtext", it.shown));
+    if (it.label && normalize(it.label) !== normalize(it.field)) text.append(make("span", "asks", `Page asks: “${it.label}”`));
+    if (picked) {
+      pick.setAttribute("role", "checkbox");
+      pick.setAttribute("aria-checked", String(picked.has(it.id)));
+      pick.append(make("span", "box", icon(PATH.check)), text);
+    } else {
+      pick.append(make("span", "tick", icon(PATH.check)), text);
+    }
+    const loc = button("loc", "", () => locate(it));
+    loc.setAttribute("aria-label", "Show " + it.field + " on the page");
+    loc.title = "Show on the page";
+    loc.append(icon(PATH.locate));
+    return make("div", "row" + (it.hidden ? " flag" : ""), pick, loc);
+  }
+
+  function showPanel(...parts) {
+    const { panel, fab } = getUI();
+    panel.replaceChildren(...parts);
+    panel.hidden = false;
+    fab.hidden = true;
+    hideChip();
+    panel.focus({ preventScroll: true });
+  }
+
+  function closePanel() {
+    if (ui) ui.panel.hidden = true;
+    refreshFab();
+  }
+
+  function openReview() {
+    const items = scan();
+    if (!items.length) { closePanel(); toast("Nothing left to fill on this page."); return; }
+    const info = frameInfo();
+    const picked = new Set(items.filter(it => !it.hidden && !info.foreign).map(it => it.id));
+    const seen = items.filter(it => !it.hidden), unseen = items.filter(it => it.hidden);
+
+    const fill = button("btn main", "", () => showDone(fillIds([...picked])));
+    const update = () => {
+      fill.textContent = picked.size ? "Fill " + plural(picked.size, "field") : "Nothing selected";
+      fill.disabled = !picked.size;
+    };
+    update();
+
+    const list = make("div", "list",
+      info.foreign ? make("p", "note", `This form is in a frame from ${info.host}${info.parent ? `, embedded in ${info.parent}` : ""}. Only fill it if you expected a form from that site here.`) : null,
+      ...seen.map(it => fieldRow(it, picked, update)));
+    if (unseen.length) {
+      list.append(
+        make("div", "sec", icon(PATH.warn), "Hidden on the page"),
+        make("p", "note", "You can’t see these fields, so the page may be asking for more than it shows. Leave them unticked unless you know why they’re there."),
+        ...unseen.map(it => fieldRow(it, picked, update)));
+    }
+    showPanel(
+      head("Review before filling", `${info.host || "This page"} · ${plural(items.length, "field")}`),
+      list,
+      make("div", "bar", button("btn", "Cancel", closePanel), fill));
+  }
+
+  function showDone(done) {
+    if (!done.length) { closePanel(); toast("Those fields changed, so nothing was filled."); return; }
+    const undo = button("btn", "Undo", () => {
+      const n = undoLast();
+      closePanel();
+      toast(n ? "Undid " + plural(n, "field") + "." : "Nothing to undo. You’ve changed those fields since.");
+    });
+    showPanel(
+      head("Filled " + plural(done.length, "field"), "Check them before you submit. Nothing was submitted.", true),
+      make("div", "list done", ...done.map(it => fieldRow(it, null))),
+      make("div", "bar", undo, button("btn main", "Done", closePanel)));
+  }
+
   // ---------- Wiring ----------
   function looksLikeJobPage() {
     if (jobCache.url === location.href) return jobCache.val;
@@ -381,13 +655,13 @@
   const active = () => forced || looksLikeJobPage();
 
   function refreshFab() {
-    if (!active()) { if (ui) ui.fab.hidden = true; return; }
-    const pending = scan().length;
+    if (!active() || (ui && !ui.panel.hidden)) { if (ui) ui.fab.hidden = true; return; }
+    const pending = scan().filter(it => !it.hidden).length;
     if (pending < 2) { if (ui) ui.fab.hidden = true; return; }
     const { fab } = getUI();
     const dot = document.createElement("span");
     dot.className = "dot";
-    fab.replaceChildren(dot, `Fill ${pending} fields`);
+    fab.replaceChildren(dot, `Review ${pending} fields`);
     fab.hidden = false;
   }
 
@@ -424,11 +698,24 @@
     if (area === "sync") reload().then(refreshFab);
   });
 
+  // The toolbar menu asks every frame what it found, shows one combined review, then
+  // tells each frame which of its fields to fill.
   browser.runtime.onMessage.addListener(msg => {
-    if (!msg || msg.cmd !== "fill") return;
-    forced = true;
-    const inFrameSetup = window !== window.top || !!document.querySelector("iframe");
-    return Promise.resolve(fillAll({ quietIfEmpty: inFrameSetup }));
+    if (!msg) return;
+    if (msg.cmd === "scan") {
+      forced = true;
+      if (ui) ui.panel.hidden = true;
+      browser.runtime.sendMessage({ cmd: "found", ...frameInfo(), items: scan().map(brief) }).catch(() => {});
+      refreshFab();
+      return Promise.resolve(true);
+    }
+    if (msg.cmd === "fill") return Promise.resolve(fillIds(msg.ids || []).map(brief));
+    if (msg.cmd === "undo") return Promise.resolve(undoLast());
+    if (msg.cmd === "locate") {
+      const it = scan().find(x => x.id === msg.id);
+      if (it) locate(it);
+      return Promise.resolve(!!it);
+    }
   });
 
   reload().then(() => setTimeout(refreshFab, 400));
