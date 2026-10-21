@@ -365,6 +365,42 @@ $("#useCode").addEventListener("click", async () => {
   }
 });
 
+// ---------- Updates ----------
+// Only Firefox can install a new version. This just reads the same updates.json Firefox
+// checks, when you tap the button, and says whether there's something newer.
+const newer = (a, b) => {
+  const x = a.split(".").map(Number), y = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
+};
+
+$("#version").textContent = browser.runtime.getManifest().version;
+$("#checkUpdate").addEventListener("click", async () => {
+  const out = $("#updateMsg");
+  const manifest = browser.runtime.getManifest();
+  const gecko = manifest.browser_specific_settings.gecko;
+  out.classList.remove("error");
+  out.textContent = "Checking…";
+  try {
+    const res = await fetch(gecko.update_url, { cache: "no-store", credentials: "omit" });
+    if (!res.ok) throw new Error(`error ${res.status}`);
+    const list = (((await res.json()).addons || {})[gecko.id] || {}).updates || [];
+    const latest = list.reduce((best, u) => (!best || newer(u.version, best.version) ? u : best), null);
+    if (!latest || !newer(latest.version, manifest.version)) {
+      out.textContent = `You have the latest version (${manifest.version}).`;
+      return;
+    }
+    const page = latest.update_link.replace(/\/releases\/download\/([^/]+)\/.*$/, "/releases/tag/$1");
+    out.replaceChildren(
+      `Version ${latest.version} is out. Desktop Firefox installs it by itself within a day; to get it now, open about:addons, click the gear and choose “Check for Updates”. On a phone, download it from the `,
+      h("a", { href: page, target: "_blank", rel: "noopener" }, "release page"),
+      " and install it from file.");
+  } catch (e) {
+    out.textContent = "Couldn’t check for updates (" + e.message + ").";
+    out.classList.add("error");
+  }
+});
+
 // Pick up changes synced from your other device, unless you're mid-edit.
 browser.storage.onChanged.addListener((changes, area) => {
   if (area !== "sync" && !(area === "local" && changes.resumeInfo)) return;

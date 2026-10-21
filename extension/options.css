@@ -114,7 +114,10 @@ h3 { margin: 26px 0 4px; font-size: 1rem; font-weight: 650; }
 .codebox textarea, .codein textarea { min-height: 0; font: 0.8125rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; resize: none; }
 .codebox .row { align-items: center; }
 .codein { margin: 18px 0 10px; }
-
+#updateMsg { margin-top: 10px; }
+#updateMsg.error { color: var(--danger); }
+#updateMsg:empty { display: none; }
+#updateMsg a { color: inherit; }
 @media (prefers-reduced-motion: no-preference) {
   input, textarea { transition: box-shadow 120ms ease; }
 }
