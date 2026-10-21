@@ -1,0 +1,13 @@
+{
+  "addons": {
+    "apply-kit@personal.local": {
+      "updates": [
+        {
+          "version": "0.3.0",
+          "update_link": "https://github.com/Larry8668/apply-kit/releases/download/v0.3.0/3a757d16e43b4d8f9342-0.3.0.xpi",
+          "update_hash": "sha256:1929b53adc0e16ef30c8437e2e2597e1f4dc4b4292dcaddc56cc68ea950575f5"
+        }
+      ]
+    }
+  }
+}
