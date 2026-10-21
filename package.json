@@ -1,0 +1,20 @@
+{
+  "name": "apply-kit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal Firefox extension that fills job applications from a profile you keep.",
+  "license": "MIT",
+  "scripts": {
+    "lint": "web-ext lint --source-dir extension",
+    "start": "web-ext run --source-dir extension",
+    "start:android": "web-ext run -t firefox-android --source-dir extension",
+    "sign": "web-ext sign --channel=unlisted --source-dir extension"
+  },
+  "//": [
+    "start:android needs adb and a USB-connected phone. Pass the device ID from `adb devices`: npm run start:android -- --android-device=DEVICE_ID",
+    "sign reads WEB_EXT_API_KEY and WEB_EXT_API_SECRET from the environment. Never put the keys in this file."
+  ],
+  "devDependencies": {
+    "web-ext": "^10.8.0"
+  }
+}
