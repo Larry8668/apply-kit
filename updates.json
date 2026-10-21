@@ -21,6 +21,11 @@
           "version": "0.6.0",
           "update_link": "https://github.com/Larry8668/apply-kit/releases/download/v0.6.0/3a757d16e43b4d8f9342-0.6.0.xpi",
           "update_hash": "sha256:d41a6998366a3895e2d0e2869ce743bc045ef189c9afaceea256cdc6e1b4d6bb"
+        },
+        {
+          "version": "0.7.0",
+          "update_link": "https://github.com/Larry8668/apply-kit/releases/download/v0.7.0/3a757d16e43b4d8f9342-0.7.0.xpi",
+          "update_hash": "sha256:468eebb66291632b645751b54898366933ae5d037269d82ebf07e94a18dd65a0"
         }
       ]
     }
