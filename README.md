@@ -23,8 +23,9 @@ It's a personal project, built for one person's job search and shared in case it
 - **Pay details.** Current total pay, fixed, variable and stock parts, a free-text breakdown, and expected salary are separate fields, so "Current CTC" and "Expected CTC" each get the right number.
 - **Suggestions as you go.** When you tap into a field, a small box offers the matching profile value, plus up to three saved answers if the field is a longer question.
 - **Saved answers.** After writing an answer to a question like "Why do you want to work here?", tap "Save as answer". Questions with similar wording on later forms get it as a suggestion.
-- **Transfer code.** Firefox for Android can't sync extension data, so settings can turn your profile and saved answers into a one-line code to paste on your other device, optionally locked with a passphrase. See [Syncing between devices](#syncing-between-devices).
-- **Applications log.** Every form you fill is logged on that device with the company, role, date and link. Settings lets you correct them, track a status (Filled, Applied, Interviewing, Offer, Rejected, Withdrawn), and export the list as CSV. It can be turned off.
+- **Transfer code.** Firefox for Android can't sync extension data, so settings can turn your profile and saved answers into a one-line code to paste on your other device, optionally locked with a passphrase (settings can generate a strong one). See [Syncing between devices](#syncing-between-devices).
+- **Searchable dropdowns.** Country, city and yes/no questions on Greenhouse's newer forms (and other sites using the same react-select widget) are picked from the site's own list. When several options match, such as cities called San Francisco, your state and country decide. Anything that can't be matched is listed under "Fill these by hand".
+- **Applications.** Every form you fill is logged on that device with the company and role picked up from the page, the link, the date and which fields were filled. The Applications page (also one tap from the toolbar menu) has status tracking (Filled, Applied, Interviewing, Offer, Rejected, Withdrawn), filters, search and notes, and exports to Excel (.xlsx) or CSV. It can be turned off.
 - **Extra fields.** For anything the profile doesn't cover, such as EEO questions or referral codes, add a name, some label keywords, and a value in settings.
 - **Toolbar menu.** "Fill this page" works on any page, including ones not recognised as an application. It reviews every part of the page in one list, grouped by site. Forms embedded from known application platforms start ticked. Anything from an unrelated site, like an ad, is flagged "Other site" and starts unticked. "Edit profile" opens settings.
 
@@ -112,7 +113,8 @@ The extension lives in `extension/`. The repo root holds tooling only.
 | `extension/rules.js` | Profile fields and the patterns used to recognise them on forms. Edit this to add fields or tune matching. |
 | `extension/storage.js` | Reads and writes extension storage: `storage.sync` for the profile and answers, `storage.local` for the resume PDF. |
 | `extension/content.js` | Finds fields, fills them, and shows the suggestion box, the review panel and the fill button. |
-| `extension/options.*` | Settings page, including the resume, transfer code, backup and update check. |
+| `extension/options.*` | Settings, split into pages: Profile, Saved answers, Resume, Applications, Backup & sync, About. `options.html#applications` opens a page directly. |
+| `extension/xlsx.js` | Writes the Excel export. A few XML files in an uncompressed zip, no library. |
 | `extension/popup.*` | Toolbar menu. |
 | `updates.json` | Update manifest Firefox checks for new versions. Written by the release workflow. |
 | `docs/screenshots/` | Images used in this README. |
@@ -161,7 +163,8 @@ Mozilla signs each version number exactly once. Trying to sign a version that's 
 ## Known limits and next steps
 
 - **Drag-and-drop-only resume areas** with no real upload field behind them can't be filled; use the site's own upload button.
-- **Custom dropdowns** (searchable comboboxes on Workday and some Ashby forms) aren't real `<select>` elements, so they often need a manual tap. Adding per-site adapters in `extension/content.js` is the fix, and Workday is the one most worth doing.
+- **Workday dropdowns** use Workday's own widgets rather than react-select, so they still need a manual tap. How to handle them is worked out (open the prompt, match the option, confirm the selected value appears); it needs a live Workday application to test against.
+- **Undo** clears most searchable dropdowns, but a few (like Greenhouse's city search) ignore being cleared by a script. Clear those by hand.
 - **English labels only.** Matching is pattern-based and English-only. Adding patterns in other languages to `extension/rules.js` works.
 - **Good next feature:** draft answers to new questions with an AI model, using your saved answers and the job description as context. This needs an API key and a small settings field for it.
 
