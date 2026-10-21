@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Apply Kit</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Apply Kit</h1>
+    <p id="status" class="status" aria-live="polite">Changes save automatically.</p>
+  </header>
+  <main>
+    <section>
+      <h2>Your profile</h2>
+      <p class="hint">Fills matching fields on application forms. Leave anything blank to skip it.</p>
+      <div id="profileGroups"></div>
+    </section>
+
+    <section>
+      <h2>Extra fields</h2>
+      <p class="hint">For questions the profile doesn’t cover. When a field’s label contains one of the keywords, this value is filled in.</p>
+      <div id="customList"></div>
+      <button type="button" class="secondary" id="addCustom">Add field</button>
+    </section>
+
+    <section>
+      <h2>Saved answers</h2>
+      <p class="hint">Longer answers you reuse. Similar questions on a form get these as suggestions.</p>
+      <input type="search" id="ansSearch" placeholder="Search answers" aria-label="Search saved answers">
+      <div id="ansList"></div>
+      <button type="button" class="secondary" id="addAns">Add answer</button>
+    </section>
+
+    <section>
+      <h2>Sync and backup</h2>
+      <p class="hint">This syncs between your devices when Firefox Sync is on with Add-ons selected. Changes can take a few minutes to reach the other device.</p>
+      <div class="row">
+        <button type="button" id="export">Export backup</button>
+        <label class="button secondary">Import backup<input type="file" id="import" accept="application/json,.json" hidden></label>
+      </div>
+      <p id="usage" class="hint"></p>
+    </section>
+  </main>
+  <script src="rules.js"></script>
+  <script src="storage.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>
