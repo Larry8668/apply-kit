@@ -8,100 +8,158 @@
 </head>
 <body>
   <header class="top">
-    <h1>Apply Kit</h1>
+    <div class="brand"><img src="icon.svg" alt="" width="26" height="26"><span>Apply Kit</span></div>
     <p id="status" class="status" aria-live="polite">Changes save automatically.</p>
   </header>
-  <main>
-    <section>
-      <h2>Your profile</h2>
-      <p class="hint">Fills matching fields on application forms. Leave anything blank to skip it.</p>
-      <div id="profileGroups"></div>
-    </section>
 
-    <section>
-      <h2>Resume</h2>
-      <p class="hint">Attached to resume upload fields when you fill a form. The PDF is kept on this device only, because sync storage is too small for it. Between desktop computers its name and date sync, so the other one can tell you when its copy is out of date.</p>
-      <div id="resumeCard"></div>
-      <div class="row">
-        <label class="button secondary">Upload PDF<input type="file" id="resumeFile" accept="application/pdf,.pdf" hidden></label>
-      </div>
-      <div class="field linkfield">
-        <label for="resumeLink">Or download it from a link</label>
-        <div class="row">
-          <input type="url" id="resumeLink" placeholder="https://drive.google.com/file/d/…" autocomplete="off">
-          <button type="button" id="resumeFetch">Download</button>
+  <div class="shell">
+    <nav class="nav" aria-label="Settings sections">
+      <a href="#profile" data-page="profile"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="7" r="3.2"/><path d="M3.8 16.5c.9-3 3.3-4.6 6.2-4.6s5.3 1.6 6.2 4.6"/></svg>Profile</a>
+      <a href="#answers" data-page="answers"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5h12v8.5H9l-3.5 3v-3H4z"/></svg>Saved answers</a>
+      <a href="#resume" data-page="resume"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5.5 2.5h6l3 3v12h-9z"/><path d="M11.5 2.5v3h3M8 10h4.5M8 13h4.5"/></svg>Resume</a>
+      <a href="#applications" data-page="applications"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="5.5" width="14" height="10.5" rx="1.5"/><path d="M7.5 5.5V4h5v1.5M3 10h14"/></svg>Applications</a>
+      <a href="#backup" data-page="backup"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7.5 7 4.5l3 3M7 4.5v8M16 12.5l-3 3-3-3M13 15.5v-8"/></svg>Backup &amp; sync</a>
+      <a href="#about" data-page="about"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 9v4.5M10 6.5v.1"/></svg>About</a>
+    </nav>
+
+    <main>
+      <section class="page" id="page-profile" data-title="Profile">
+        <div class="pagehead">
+          <div>
+            <h2>Profile</h2>
+            <p class="hint">Fills matching fields on application forms. Leave anything blank to skip it.</p>
+          </div>
         </div>
-        <p class="fieldhint">Google Drive, Google Docs, Dropbox, or a direct link to a PDF. Anyone with the link must be able to view it. Firefox asks once for permission to reach that site; nothing is downloaded until you tap Download.</p>
-      </div>
-      <p id="resumeMsg" class="fieldhint" role="status"></p>
-    </section>
+        <div id="profileGroups"></div>
 
-    <section>
-      <h2>Extra fields</h2>
-      <p class="hint">For questions the profile doesn’t cover. When a field’s label contains one of the keywords, this value is filled in.</p>
-      <div id="customList"></div>
-      <button type="button" class="secondary" id="addCustom">Add field</button>
-    </section>
+        <div class="card">
+          <h3>Extra fields</h3>
+          <p class="hint">For questions the profile doesn’t cover. When a field’s label contains one of the keywords, this value is filled in.</p>
+          <div id="customList"></div>
+          <button type="button" class="secondary" id="addCustom">Add field</button>
+        </div>
+      </section>
 
-    <section>
-      <h2>Saved answers</h2>
-      <p class="hint">Longer answers you reuse. Similar questions on a form get these as suggestions.</p>
-      <input type="search" id="ansSearch" placeholder="Search answers" aria-label="Search saved answers">
-      <div id="ansList"></div>
-      <button type="button" class="secondary" id="addAns">Add answer</button>
-    </section>
+      <section class="page" id="page-answers" data-title="Saved answers" hidden>
+        <div class="pagehead">
+          <div>
+            <h2>Saved answers</h2>
+            <p class="hint">Longer answers you reuse. Similar questions on a form get these as suggestions.</p>
+          </div>
+          <button type="button" class="secondary" id="addAns">Add answer</button>
+        </div>
+        <input type="search" id="ansSearch" placeholder="Search answers" aria-label="Search saved answers">
+        <div class="card"><div id="ansList"></div></div>
+      </section>
 
-    <section>
-      <h2>Applications</h2>
-      <p class="hint">Every form you fill is logged here, on this device only, with the company and role Apply Kit could work out. Fix them if they’re off, and update the status as things move.</p>
-      <label class="check"><input type="checkbox" id="appsOn"> Keep a log of applications I fill</label>
-      <div id="appsList"></div>
-      <div class="row" id="appsActions">
-        <button type="button" class="secondary" id="appsCsv">Download CSV</button>
-        <button type="button" class="secondary" id="appsCopy">Copy as CSV</button>
-      </div>
-    </section>
+      <section class="page" id="page-resume" data-title="Resume" hidden>
+        <div class="pagehead">
+          <div>
+            <h2>Resume</h2>
+            <p class="hint">Attached to resume upload fields when you fill a form. The PDF is kept on this device only, because sync storage is too small for it. Between desktop computers its name and date sync, so the other one can tell you when its copy is out of date.</p>
+          </div>
+        </div>
+        <div class="card">
+          <div id="resumeCard"></div>
+          <div class="row">
+            <label class="button secondary">Upload PDF<input type="file" id="resumeFile" accept="application/pdf,.pdf" hidden></label>
+          </div>
+          <div class="field linkfield">
+            <label for="resumeLink">Or download it from a link</label>
+            <div class="row">
+              <input type="url" id="resumeLink" placeholder="https://drive.google.com/file/d/…" autocomplete="off">
+              <button type="button" id="resumeFetch">Download</button>
+            </div>
+            <p class="fieldhint">Google Drive, Google Docs, Dropbox, or a direct link to a PDF. Anyone with the link must be able to view it. Firefox asks once for permission to reach that site; nothing is downloaded until you tap Download.</p>
+          </div>
+          <p id="resumeMsg" class="fieldhint" role="status"></p>
+        </div>
+      </section>
 
-    <section>
-      <h2>Sync and backup</h2>
-      <p class="hint">Firefox Sync copies this between desktop computers when Add-ons is selected in its settings. Firefox for Android doesn’t sync extension data yet, so use a transfer code or a backup file to move everything to or from a phone.</p>
+      <section class="page wide" id="page-applications" data-title="Applications" hidden>
+        <div class="pagehead">
+          <div>
+            <h2>Applications</h2>
+            <p class="hint">Every form you fill shows up here, with the company and role Apply Kit picked up from the page. Kept on this device only.</p>
+          </div>
+          <div class="row exports" id="appsExports">
+            <button type="button" id="appsXlsx">Export Excel</button>
+            <button type="button" class="secondary" id="appsCsv">CSV</button>
+            <button type="button" class="secondary" id="appsCopy">Copy</button>
+          </div>
+        </div>
+        <div class="filters" id="appsFilters" role="group" aria-label="Filter by status"></div>
+        <input type="search" id="appsSearch" placeholder="Search company, role or site" aria-label="Search applications">
+        <div id="appsList" class="apps"></div>
+        <label class="check"><input type="checkbox" id="appsOn"> Log applications I fill on this device</label>
+      </section>
 
-      <h3>Transfer code</h3>
-      <p class="hint">The quickest way to a phone. Create a code here, send it to yourself (a notes app, email, or a chat with yourself), and paste it into settings on the other device. It holds your profile, extra fields and saved answers, but not your resume. Without a passphrase the code isn’t encrypted, so anyone who sees it can read your details.</p>
-      <div class="field pass">
-        <label for="codePass">Passphrase (optional)</label>
-        <input type="password" id="codePass" autocomplete="new-password" placeholder="Leave blank for an unlocked code">
-        <p class="fieldhint">Set one to lock the code, then enter the same passphrase on the other device to import it. Without it, the code can’t be read.</p>
-      </div>
-      <button type="button" id="makeCode" class="secondary">Create transfer code</button>
-      <div id="codeOut" class="codebox" hidden>
-        <textarea id="codeText" rows="4" readonly aria-label="Transfer code"></textarea>
-        <div class="row"><button type="button" id="copyCode">Copy code</button><span id="codeMeta" class="meta"></span></div>
-      </div>
-      <div class="field codein">
-        <label for="codeIn">Paste a code from your other device</label>
-        <textarea id="codeIn" rows="3" placeholder="APPLYKIT1.…" autocomplete="off" spellcheck="false"></textarea>
-      </div>
-      <button type="button" id="useCode" class="secondary">Import code</button>
+      <section class="page" id="page-backup" data-title="Backup &amp; sync" hidden>
+        <div class="pagehead">
+          <div>
+            <h2>Backup &amp; sync</h2>
+            <p class="hint">Firefox Sync copies your profile between desktop computers when Add-ons is selected in its settings. Firefox for Android doesn’t sync extension data yet, so use a transfer code or a backup file to move everything to or from a phone.</p>
+          </div>
+        </div>
 
-      <h3>Backup file</h3>
-      <p class="hint">The same data as a file, for keeping a copy somewhere safe.</p>
-      <div class="row">
-        <button type="button" id="export">Export backup</button>
-        <label class="button secondary">Import backup<input type="file" id="import" accept="application/json,.json" hidden></label>
-      </div>
-      <p id="usage" class="hint"></p>
-    </section>
+        <div class="card">
+          <h3>Transfer code</h3>
+          <p class="hint">The quickest way to a phone. Create a code here, send it to yourself (a notes app, email, or a chat with yourself), and paste it into settings on the other device. It holds your profile, extra fields and saved answers, but not your resume or applications. Without a passphrase the code isn’t encrypted, so anyone who sees it can read your details.</p>
+          <div class="field pass">
+            <label for="codePass">Passphrase (optional)</label>
+            <div class="row passrow">
+              <input type="password" id="codePass" autocomplete="new-password" placeholder="Leave blank for an unlocked code" spellcheck="false">
+              <button type="button" class="secondary" id="genPass">Generate</button>
+              <button type="button" class="secondary" id="copyPass">Copy</button>
+            </div>
+            <p class="fieldhint">Set one to lock the code, then enter the same passphrase on the other device to import it. Without it, the code can’t be read. Send the passphrase separately from the code.</p>
+          </div>
+          <button type="button" id="makeCode" class="secondary">Create transfer code</button>
+          <div id="codeOut" class="codebox" hidden>
+            <textarea id="codeText" rows="4" readonly aria-label="Transfer code"></textarea>
+            <div class="row"><button type="button" id="copyCode">Copy code</button><span id="codeMeta" class="meta"></span></div>
+          </div>
+          <div class="field codein">
+            <label for="codeIn">Paste a code from your other device</label>
+            <textarea id="codeIn" rows="3" placeholder="APPLYKIT1.…" autocomplete="off" spellcheck="false"></textarea>
+          </div>
+          <button type="button" id="useCode" class="secondary">Import code</button>
+        </div>
 
-    <section>
-      <h2>Updates</h2>
-      <p class="hint">You’re on version <span id="version"></span>. Firefox installs new versions by itself. This only checks whether one is out, and only when you tap it.</p>
-      <button type="button" id="checkUpdate" class="secondary">Check for updates</button>
-      <p id="updateMsg" class="fieldhint" role="status"></p>
-    </section>
-  </main>
+        <div class="card">
+          <h3>Backup file</h3>
+          <p class="hint">The same data as a file, for keeping a copy somewhere safe.</p>
+          <div class="row">
+            <button type="button" id="export">Export backup</button>
+            <label class="button secondary">Import backup<input type="file" id="import" accept="application/json,.json" hidden></label>
+          </div>
+          <p id="usage" class="fieldhint"></p>
+        </div>
+      </section>
+
+      <section class="page" id="page-about" data-title="About" hidden>
+        <div class="pagehead">
+          <div>
+            <h2>About</h2>
+            <p class="hint">Apply Kit fills job applications from your profile after you review each field. It has no server and no tracking; your details stay in Firefox.</p>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Updates</h3>
+          <p class="hint">You’re on version <span id="version"></span>. Firefox installs new versions by itself. This only checks whether one is out, and only when you tap it.</p>
+          <button type="button" id="checkUpdate" class="secondary">Check for updates</button>
+          <p id="updateMsg" class="fieldhint" role="status"></p>
+        </div>
+        <div class="card">
+          <h3>Source and help</h3>
+          <p class="hint">The code, release notes and privacy details are on <a href="https://github.com/Larry8668/apply-kit" target="_blank" rel="noopener">GitHub</a>. Report problems there as an issue.</p>
+        </div>
+      </section>
+    </main>
+  </div>
   <script src="rules.js"></script>
   <script src="storage.js"></script>
+  <script src="xlsx.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

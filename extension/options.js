@@ -206,7 +206,7 @@ function renderResume() {
     card.append(n);
   }
   if (!here) {
-    card.append(h("div", { class: "card empty" }, "No resume on this device yet."));
+    card.append(h("div", { class: "doccard empty" }, "No resume on this device yet."));
   } else {
     const via = here.source === "link" ? "from your link" : "uploaded";
     const remove = h("button", { type: "button", class: "text danger", onclick: async () => {
@@ -220,7 +220,7 @@ function renderResume() {
     const actions = h("div", {});
     if (here.link) actions.append(h("button", { type: "button", class: "text", onclick: () => fetchResume(here.link) }, "Refresh"));
     actions.append(remove);
-    card.append(h("div", { class: "card" },
+    card.append(h("div", { class: "doccard" },
       h("span", { class: "doc", "aria-hidden": "true" }, "PDF"),
       h("div", { class: "what" }, h("span", { class: "name" }, here.name), h("span", { class: "meta" }, `${kb(here.size)} · ${via} ${when(here.t)}`)),
       actions));
@@ -291,11 +291,7 @@ async function importBackup(parsed, what) {
 }
 
 $("#export").addEventListener("click", () => {
-  const blob = new Blob([JSON.stringify(backupData(), null, 2)], { type: "application/json" });
-  const a = h("a", { href: URL.createObjectURL(blob), download: `apply-kit-backup-${new Date().toISOString().slice(0, 10)}.json` });
-  document.body.append(a);
-  a.click();
-  a.remove();
+  download(new Blob([JSON.stringify(backupData(), null, 2)], { type: "application/json" }), `apply-kit-backup-${isoDay(Date.now())}.json`);
   setStatus("Backup exported");
 });
 
@@ -312,47 +308,126 @@ $("#import").addEventListener("change", async e => {
 
 // ---------- Applications log ----------
 const STATUSES = ["Filled", "Applied", "Interviewing", "Offer", "Rejected", "Withdrawn"];
-const isoDay = t => new Date(t).toISOString().slice(0, 10);
+const pad = n => String(n).padStart(2, "0");
+const isoDay = t => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+const shortDay = t => new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+function chevron() {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 20 20");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(NS, "path");
+  path.setAttribute("d", "M5.5 8l4.5 4.5L14.5 8");
+  svg.append(path);
+  return svg;
+}
+let appsFilter = "All";
+const openApps = new Set();
 
 async function loadApps() {
   [apps, appsOn] = await Promise.all([AK.loadApps(), AK.appsEnabled()]);
   renderApps();
 }
 
+function download(blob, name) {
+  const a = h("a", { href: URL.createObjectURL(blob), download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
 function renderApps() {
+  $("#appsOn").checked = appsOn;
+  $("#appsExports").hidden = !apps.length;
+
+  // Status filter chips with counts.
+  const counts = { All: apps.length };
+  for (const a of apps) counts[a.status] = (counts[a.status] || 0) + 1;
+  if (appsFilter !== "All" && !counts[appsFilter]) appsFilter = "All";
+  $("#appsFilters").hidden = !apps.length;
+  $("#appsSearch").hidden = !apps.length;
+  $("#appsFilters").replaceChildren(...["All", ...STATUSES].filter(s => s === "All" || counts[s]).map(s =>
+    h("button", { type: "button", class: "chip", "aria-pressed": String(s === appsFilter), onclick: () => { appsFilter = s; renderApps(); } },
+      s, h("b", {}, String(counts[s] || 0)))));
+
   const list = $("#appsList");
   list.replaceChildren();
-  $("#appsOn").checked = appsOn;
-  $("#appsActions").hidden = !apps.length;
   if (!apps.length) {
-    list.append(h("p", { class: "empty" }, appsOn ? "Nothing yet. Forms you fill show up here." : "Logging is off."));
+    list.className = "";
+    list.append(h("div", { class: "appsempty" },
+      h("strong", {}, appsOn ? "No applications yet" : "Logging is off"),
+      appsOn ? "When you fill an application form, it shows up here with the company, role and link." : "Turn it on below to keep a list of the forms you fill."));
     return;
   }
-  for (const a of apps) {
-    const save = () => later("apps", () => AK.saveApps(apps));
-    const status = h("select", { onchange: e => { a.status = e.target.value; run(() => AK.saveApps(apps)); } },
-      ...STATUSES.map(s => h("option", { value: s, selected: s === a.status }, s)));
-    const again = a.last - a.t > 60 * 60 * 1000 ? `, again ${when(a.last)}` : "";
-    list.append(h("div", { class: "app" },
-      field("Company", h("input", { value: a.company, oninput: e => { a.company = e.target.value; save(); } })),
-      field("Role", h("input", { value: a.role, oninput: e => { a.role = e.target.value; save(); } })),
-      field("Status", status),
+  const q = normalize($("#appsSearch").value);
+  const shown = apps.filter(a => (appsFilter === "All" || a.status === appsFilter) &&
+    (!q || normalize(`${a.company} ${a.role} ${a.host} ${a.notes || ""}`).includes(q)));
+  list.className = "apps";
+  list.append(h("div", { class: "apphead", "aria-hidden": "true" },
+    h("span", {}, "Company and role"), h("span", {}, "Site"), h("span", {}, "Status"), h("span", {}, "Filled"), h("span")));
+  if (!shown.length) list.append(h("p", { class: "empty", style: "padding: 18px" }, "No applications match."));
+  for (const a of shown) list.append(appRow(a));
+}
+
+function appRow(a) {
+  const save = () => later("apps", () => AK.saveApps(apps));
+  const row = h("div", { class: "app" + (openApps.has(a.id) ? " open" : "") });
+  const toggle = () => {
+    if (openApps.has(a.id)) openApps.delete(a.id); else openApps.add(a.id);
+    row.replaceWith(appRow(a));
+  };
+  const status = h("select", {
+    class: "pill", "data-status": a.status, "aria-label": "Status for " + (a.company || a.host),
+    onclick: e => e.stopPropagation(),
+    onchange: e => { a.status = e.target.value; e.target.dataset.status = a.status; run(() => AK.saveApps(apps)); renderApps(); }
+  }, ...STATUSES.map(s => h("option", { value: s, selected: s === a.status }, s)));
+  const more = h("button", { type: "button", class: "more", "aria-expanded": String(openApps.has(a.id)),
+    "aria-label": (openApps.has(a.id) ? "Hide" : "Show") + " details", onclick: e => { e.stopPropagation(); toggle(); } }, chevron());
+  row.append(h("div", { class: "appmain", onclick: toggle },
+    h("div", { class: "who" }, h("span", { class: "company" }, a.company || a.host), h("span", { class: "role" }, a.role || "Role not detected")),
+    h("span", { class: "site", title: a.url }, a.host),
+    h("div", { class: "statuscell" }, status),
+    h("span", { class: "date", title: new Date(a.t).toLocaleString() }, shortDay(a.t)),
+    more));
+
+  if (openApps.has(a.id)) {
+    const again = a.last - a.t > 60 * 60 * 1000 ? ` · filled again ${when(a.last)}` : "";
+    row.append(h("div", { class: "appdetail" },
+      h("div", { class: "grid" },
+        field("Company", h("input", { value: a.company, oninput: e => { a.company = e.target.value; save(); } })),
+        field("Role", h("input", { value: a.role, oninput: e => { a.role = e.target.value; save(); } }))),
+      h("div", {}, h("span", { class: "label" }, "Where you filled it"),
+        h("div", { class: "linkline" },
+          h("a", { href: a.url, target: "_blank", rel: "noopener", title: a.url }, a.url),
+          h("a", { class: "button secondary", href: a.url, target: "_blank", rel: "noopener" }, "Open"))),
+      a.fieldNames && a.fieldNames.length
+        ? h("div", {}, h("span", { class: "label" }, `Fields Apply Kit filled (${a.fieldNames.length})`),
+          h("div", { class: "tags" }, ...a.fieldNames.map(n => h("span", { class: "tag" }, n))))
+        : null,
+      field("Notes", h("textarea", { value: a.notes || "", placeholder: "Recruiter, referral, salary discussed, next steps…",
+        oninput: e => { a.notes = e.target.value; save(); } })),
       h("div", { class: "foot" },
-        h("span", { class: "meta" }, `Filled ${when(a.t)}${again}`),
-        h("a", { href: a.url, target: "_blank", rel: "noopener" }, a.host),
+        h("span", { class: "meta" }, `First filled ${when(a.t)}${again}`),
         h("button", { type: "button", class: "text danger", onclick: () => {
           apps = apps.filter(x => x !== a);
+          openApps.delete(a.id);
           renderApps();
           run(() => AK.saveApps(apps));
         } }, "Delete"))));
   }
+  return row;
 }
 
+$("#appsSearch").addEventListener("input", renderApps);
 $("#appsOn").addEventListener("change", e => {
   appsOn = e.target.checked;
   renderApps();
   run(() => AK.setAppsEnabled(appsOn));
 });
+
+const APP_COLUMNS = ["Company", "Role", "Status", "First filled", "Last filled", "Link", "Notes", "Fields filled"];
+const appCells = a => [a.company, a.role, a.status, a.t, a.last, a.url, a.notes || "", (a.fieldNames || []).join(", ")];
 
 // A cell starting with = + - @ would run as a formula in a spreadsheet, and company and
 // role names come from web pages, so those get a leading apostrophe.
@@ -361,23 +436,25 @@ function csvCell(v) {
   if (/^[=+\-@\t\r]/.test(t)) t = "'" + t;
   return /[",\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
 }
-const appsCsv = () => [["Company", "Role", "Status", "First filled", "Last filled", "Link"],
-  ...apps.map(a => [a.company, a.role, a.status, isoDay(a.t), isoDay(a.last), a.url])]
+const appsCsv = () => [APP_COLUMNS, ...apps.map(a => appCells(a).map((v, i) => (i === 3 || i === 4 ? isoDay(v) : v)))]
   .map(row => row.map(csvCell).join(",")).join("\r\n");
 
+$("#appsXlsx").addEventListener("click", () => {
+  const rows = [APP_COLUMNS, ...apps.map(a => appCells(a).map((v, i) =>
+    i === 3 || i === 4 ? { date: v } : i === 5 ? { text: v, link: v } : v))];
+  download(XLSX_LITE.build("Applications", rows, [24, 34, 14, 13, 13, 48, 40, 40]), `apply-kit-applications-${isoDay(Date.now())}.xlsx`);
+  setStatus("Excel file downloaded");
+});
+
 $("#appsCsv").addEventListener("click", () => {
-  const blob = new Blob([appsCsv()], { type: "text/csv" });
-  const a = h("a", { href: URL.createObjectURL(blob), download: `apply-kit-applications-${isoDay(Date.now())}.csv` });
-  document.body.append(a);
-  a.click();
-  a.remove();
+  download(new Blob([appsCsv()], { type: "text/csv" }), `apply-kit-applications-${isoDay(Date.now())}.csv`);
   setStatus("CSV downloaded");
 });
 
 $("#appsCopy").addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(appsCsv());
-    setStatus("CSV copied. Paste it into a spreadsheet.");
+    setStatus("Copied. Paste it into a spreadsheet.");
   } catch (e) {
     setStatus("Couldn’t copy: " + e.message, true);
   }
@@ -431,6 +508,29 @@ function fromBase64Url(text) {
   const bin = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
   return Uint8Array.from(bin, c => c.charCodeAt(0));
 }
+
+// Four groups of five characters from an alphabet without look-alikes (0/O, 1/l/I):
+// about 98 bits of randomness, and still easy to type on a phone.
+$("#genPass").addEventListener("click", () => {
+  const ALPHA = "abcdefghijkmnpqrstuvwxyz23456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(20));
+  const chars = [...bytes].map(b => ALPHA[b % ALPHA.length]).join("");
+  const box = $("#codePass");
+  box.value = chars.match(/.{5}/g).join("-");
+  box.type = "text";
+  setStatus("Passphrase generated. Copy it before you leave this page.");
+});
+
+$("#copyPass").addEventListener("click", async () => {
+  const box = $("#codePass");
+  if (!box.value) { setStatus("There’s no passphrase to copy yet.", true); return; }
+  try {
+    await navigator.clipboard.writeText(box.value);
+    setStatus("Passphrase copied");
+  } catch (e) {
+    setStatus("Couldn’t copy: " + e.message, true);
+  }
+});
 
 $("#makeCode").addEventListener("click", async () => {
   const pass = $("#codePass").value;
@@ -527,5 +627,23 @@ browser.storage.onChanged.addListener((changes, area) => {
   if (area !== "sync" && !(area === "local" && changes.resumeInfo)) return;
   if (!editing && !timers.size) loadAndRender();
 });
+
+// ---------- Pages ----------
+// One section shows at a time; the address hash picks it, so links like
+// options.html#applications open straight to it.
+function showPage() {
+  const id = location.hash.slice(1);
+  const pages = [...document.querySelectorAll(".page")];
+  const page = pages.find(p => p.id === "page-" + id) || pages[0];
+  for (const p of pages) p.hidden = p !== page;
+  for (const a of document.querySelectorAll(".nav a")) {
+    if ("page-" + a.dataset.page === page.id) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+  }
+  document.title = `${page.dataset.title} · Apply Kit`;
+  const tab = document.querySelector(`.nav a[data-page="${page.id.slice(5)}"]`);
+  if (tab) tab.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+window.addEventListener("hashchange", () => { showPage(); scrollTo(0, 0); });
+showPage();
 
 loadAndRender().catch(e => setStatus("Couldn’t load your profile: " + e.message, true));
