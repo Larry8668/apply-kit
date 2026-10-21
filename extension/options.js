@@ -40,7 +40,7 @@ const timers = new Map();
 function later(key, fn, ms = 500) {
   setStatus("Saving…");
   clearTimeout(timers.get(key));
-  timers.set(key, setTimeout(() => run(fn), ms));
+  timers.set(key, setTimeout(() => { timers.delete(key); run(fn); }, ms));
 }
 
 function renderProfile() {
