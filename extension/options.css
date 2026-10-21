@@ -115,6 +115,15 @@ h3 { margin: 26px 0 4px; font-size: 1rem; font-weight: 650; }
 .codebox .row { align-items: center; }
 .codein { margin: 18px 0 10px; }
 #updateMsg { margin-top: 10px; }
+.check { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; font-size: 0.9375rem; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--ink); }
+.app { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px 12px; align-items: end; padding: 14px 0; border-top: 1px solid var(--line); }
+.app:first-child { border-top: 0; padding-top: 4px; }
+.app .foot { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.app .foot a { color: var(--muted); font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46ch; }
+.app .foot .meta { margin-right: auto; }
+select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 9px 8px; min-height: 44px; }
+@media (max-width: 560px) { .app { grid-template-columns: 1fr; } }
 #updateMsg.error { color: var(--danger); }
 #updateMsg:empty { display: none; }
 #updateMsg a { color: inherit; }

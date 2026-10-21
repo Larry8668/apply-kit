@@ -280,6 +280,7 @@
     hideChip();
     lastFill = done;
     refreshFab();
+    if (done.length) AK.logApplication({ ...describeApplication(), fields: done.length }).catch(e => console.warn("[Apply Kit]", e));
     return done;
   }
 
@@ -323,6 +324,36 @@
     // A frame from some other site that isn't a known application platform, like an ad.
     const foreign = !top && !platform && (!parent || siteOf(parent) !== siteOf(host));
     return { top, host, parent, platform, foreign };
+  }
+
+  // Best guess at the company and role for the applications log. Hosted platforms put the
+  // company in the address; elsewhere fall back to page metadata. You can fix it in settings.
+  function describeApplication() {
+    const meta = n => ((document.querySelector(`meta[property="${n}"], meta[name="${n}"]`) || {}).content || "").trim();
+    const tidy = t => {
+      t = clean(decodeURIComponent(t || "")).replace(/[-_]+/g, " ").trim();
+      return t && t === t.toLowerCase() ? t.replace(/\b\w/g, c => c.toUpperCase()) : t;
+    };
+    const host = location.hostname.replace(/^www\./, "");
+    const first = location.pathname.split("/").filter(Boolean)[0] || "";
+    // Greenhouse titles read "Job Application for <role> at <company>".
+    const gh = document.title.match(/^Job Application for (.+?) at (.+)$/);
+    let company = gh ? gh[2] : "";
+    if (!company) {
+      let slug = "";
+      if (/greenhouse\.io$/.test(host)) slug = new URLSearchParams(location.search).get("for") || (first !== "embed" ? first : "");
+      else if (/(lever\.co|ashbyhq\.com|workable\.com|smartrecruiters\.com|teamtailor\.com|wellfound\.com)$/.test(host)) slug = first;
+      else if (/(myworkdayjobs|myworkdaysite|bamboohr|icims|jobvite|personio)\./.test(host)) slug = host.split(".")[0];
+      company = tidy(slug) || meta("og:site_name") || tidy(host.replace(/^(careers|jobs|apply|boards|job-boards|join)\./, "").split(".")[0]);
+    }
+
+    let role = gh ? gh[1] : "";
+    const h1 = [...document.querySelectorAll("h1, h2")].find(h => visible(h) && textOf(h).length > 2 && textOf(h).length < 120);
+    role = role || (h1 ? textOf(h1) : "") || meta("og:title") || document.title;
+    // "Senior Engineer - Acme Corp" → "Senior Engineer"
+    const esc = company.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    role = clean(role.replace(new RegExp(`\\s*[-|–·]\\s*${esc}.*$`, "i"), "")).slice(0, 120);
+    return { url: location.href.split("#")[0], host, company, role };
   }
 
   // What the toolbar menu needs to show a field, without the element itself.

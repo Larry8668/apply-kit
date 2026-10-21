@@ -1,6 +1,8 @@
 const $ = s => document.querySelector(s);
 const statusEl = $("#status");
 let state = { profile: {}, custom: [], answers: [] };
+let apps = [];
+let appsOn = true;
 
 function h(tag, props = {}, ...kids) {
   const e = document.createElement(tag);
@@ -256,6 +258,7 @@ async function loadAndRender() {
   renderCustom();
   renderAnswers();
   renderResume();
+  await loadApps();
   updateUsage();
 }
 
@@ -307,11 +310,83 @@ $("#import").addEventListener("change", async e => {
   }
 });
 
+// ---------- Applications log ----------
+const STATUSES = ["Filled", "Applied", "Interviewing", "Offer", "Rejected", "Withdrawn"];
+const isoDay = t => new Date(t).toISOString().slice(0, 10);
+
+async function loadApps() {
+  [apps, appsOn] = await Promise.all([AK.loadApps(), AK.appsEnabled()]);
+  renderApps();
+}
+
+function renderApps() {
+  const list = $("#appsList");
+  list.replaceChildren();
+  $("#appsOn").checked = appsOn;
+  $("#appsActions").hidden = !apps.length;
+  if (!apps.length) {
+    list.append(h("p", { class: "empty" }, appsOn ? "Nothing yet. Forms you fill show up here." : "Logging is off."));
+    return;
+  }
+  for (const a of apps) {
+    const save = () => later("apps", () => AK.saveApps(apps));
+    const status = h("select", { onchange: e => { a.status = e.target.value; run(() => AK.saveApps(apps)); } },
+      ...STATUSES.map(s => h("option", { value: s, selected: s === a.status }, s)));
+    const again = a.last - a.t > 60 * 60 * 1000 ? `, again ${when(a.last)}` : "";
+    list.append(h("div", { class: "app" },
+      field("Company", h("input", { value: a.company, oninput: e => { a.company = e.target.value; save(); } })),
+      field("Role", h("input", { value: a.role, oninput: e => { a.role = e.target.value; save(); } })),
+      field("Status", status),
+      h("div", { class: "foot" },
+        h("span", { class: "meta" }, `Filled ${when(a.t)}${again}`),
+        h("a", { href: a.url, target: "_blank", rel: "noopener" }, a.host),
+        h("button", { type: "button", class: "text danger", onclick: () => {
+          apps = apps.filter(x => x !== a);
+          renderApps();
+          run(() => AK.saveApps(apps));
+        } }, "Delete"))));
+  }
+}
+
+$("#appsOn").addEventListener("change", e => {
+  appsOn = e.target.checked;
+  renderApps();
+  run(() => AK.setAppsEnabled(appsOn));
+});
+
+// A cell starting with = + - @ would run as a formula in a spreadsheet, and company and
+// role names come from web pages, so those get a leading apostrophe.
+function csvCell(v) {
+  let t = String(v == null ? "" : v);
+  if (/^[=+\-@\t\r]/.test(t)) t = "'" + t;
+  return /[",\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+}
+const appsCsv = () => [["Company", "Role", "Status", "First filled", "Last filled", "Link"],
+  ...apps.map(a => [a.company, a.role, a.status, isoDay(a.t), isoDay(a.last), a.url])]
+  .map(row => row.map(csvCell).join(",")).join("\r\n");
+
+$("#appsCsv").addEventListener("click", () => {
+  const blob = new Blob([appsCsv()], { type: "text/csv" });
+  const a = h("a", { href: URL.createObjectURL(blob), download: `apply-kit-applications-${isoDay(Date.now())}.csv` });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setStatus("CSV downloaded");
+});
+
+$("#appsCopy").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(appsCsv());
+    setStatus("CSV copied. Paste it into a spreadsheet.");
+  } catch (e) {
+    setStatus("Couldn’t copy: " + e.message, true);
+  }
+});
+
 // ---------- Transfer code ----------
 // The same data as a backup file, gzipped and base64-encoded into one line of text you
 // can paste into a notes app or a chat with yourself. Not encrypted.
 const CODE_PREFIX = "APPLYKIT1.";
-
 async function gzip(text, compress) {
   const stream = new Blob([text]).stream().pipeThrough(compress ? new CompressionStream("gzip") : new DecompressionStream("gzip"));
   return new Uint8Array(await new Response(stream).arrayBuffer());
@@ -403,8 +478,9 @@ $("#checkUpdate").addEventListener("click", async () => {
 
 // Pick up changes synced from your other device, unless you're mid-edit.
 browser.storage.onChanged.addListener((changes, area) => {
+  const editing = document.activeElement && document.activeElement.matches("input, textarea, select");
+  if (area === "local" && (changes.apps || changes.appsOff) && !editing && !timers.size) loadApps();
   if (area !== "sync" && !(area === "local" && changes.resumeInfo)) return;
-  const editing = document.activeElement && document.activeElement.matches("input, textarea");
   if (!editing && !timers.size) loadAndRender();
 });
 

@@ -81,5 +81,33 @@ var AK = (() => {
     await area.remove("resume");
   }
 
-  return { newId, load, saveProfile, saveCustom, saveAnswer, deleteAnswer, replaceAll, saveResume, loadResumeFile, removeResume };
+  // Applications you've filled, newest first. Kept per device in storage.local: it can grow past
+  // what sync storage holds, and phones can't sync it anyway.
+  const MAX_APPS = 500;
+  const loadApps = async () => (await local.get("apps")).apps || [];
+  const saveApps = apps => local.set({ apps: apps.slice(0, MAX_APPS) });
+  const appsEnabled = async () => !(await local.get("appsOff")).appsOff;
+  const setAppsEnabled = on => (on ? local.remove("appsOff") : local.set({ appsOff: true }));
+
+  // Records a fill. Filling the same job again (another step of a multi-page form, or
+  // coming back later) updates its entry instead of adding a second one.
+  async function logApplication({ url, host, company, role, fields }) {
+    if (!(await appsEnabled())) return;
+    const apps = await loadApps();
+    const now = Date.now();
+    const same = a => a.url === url || (a.host === host && role && a.role.toLowerCase() === role.toLowerCase());
+    const hit = apps.find(same);
+    if (hit) {
+      hit.last = now;
+      hit.fields += fields;
+      apps.splice(apps.indexOf(hit), 1);
+      apps.unshift(hit);
+    } else {
+      apps.unshift({ id: newId(), url, host, company, role, t: now, last: now, fields, status: "Filled" });
+    }
+    await saveApps(apps);
+  }
+
+  return { newId, load, saveProfile, saveCustom, saveAnswer, deleteAnswer, replaceAll, saveResume, loadResumeFile, removeResume,
+    loadApps, saveApps, appsEnabled, setAppsEnabled, logApplication };
 })();
