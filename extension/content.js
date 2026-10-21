@@ -507,7 +507,17 @@
   // What the toolbar menu needs to show a field, without the element itself.
   const brief = it => ({ id: it.id, field: it.field, label: it.label, shown: it.shown, hidden: it.hidden });
 
-  function fillOne(el, v) {
+  async function fillOne(el, v) {
+    if (isCombo(el)) {
+      hideChip();
+      filling = true;
+      const ok = await chooseOption(el, v).catch(() => false);
+      filling = false;
+      if (!ok) toast("That isn’t one of this list’s options. Pick one by hand.");
+      else flash(comboBox(el));
+      refreshSoon();
+      return;
+    }
     filling = true;
     if (el.tagName === "SELECT") {
       const option = pickOption([...el.options].map(o => ({ label: o.text, o })), v);
@@ -565,7 +575,23 @@
     .opt:hover, .opt:focus-visible { background: #F3F5F7; border-left-color: #F2B705; outline: none; }
     .what { display: block; font-size: 12px; color: #5B6875; margin-bottom: 2px; }
     .val { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
-    .foot { display: flex; gap: 6px; justify-content: flex-end; padding: 6px 4px 2px; border-top: 1px solid #D5DBE1; margin-top: 2px; }
+    .optrow { display: flex; align-items: stretch; gap: 2px; }
+    .optrow .opt { flex: 1; min-width: 0; }
+    .copy { flex: none; width: 36px; border: 0; border-radius: 6px; background: none; color: #5B6875; cursor: pointer; display: grid; place-items: center; }
+    .copy:hover, .copy:focus-visible { background: #F3F5F7; color: #17212B; outline: none; }
+    .more { display: flex; align-items: center; justify-content: space-between; width: 100%; margin-top: 2px; padding: 9px 10px;
+      border: 0; border-top: 1px solid #D5DBE1; background: none; color: #17212B; font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; }
+    .more:first-child { border-top: 0; margin-top: 0; }
+    .more:hover { background: #F3F5F7; }
+    .chev { display: grid; color: #5B6875; transition: transform .15s; }
+    .chev.up { transform: rotate(180deg); }
+    .find { display: block; width: calc(100% - 12px); margin: 2px 6px 6px; padding: 8px 10px; border: 1px solid #D5DBE1; border-radius: 8px;
+      font: inherit; font-size: 14px; color: inherit; background: #fff; }
+    .find:focus { outline: none; border-color: #17212B; box-shadow: inset 0 -2px 0 #F2B705; }
+    .all { max-height: 240px; overflow: auto; overscroll-behavior: contain; }
+    .all .val { -webkit-line-clamp: 1; }
+    .none { margin: 6px 10px 10px; color: #5B6875; font-size: 13px; }
+    .foot { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; padding: 6px 4px 2px; border-top: 1px solid #D5DBE1; margin-top: 2px; }
     .foot:first-child { border-top: 0; margin-top: 0; }
     .act { background: none; border: 1px solid #D5DBE1; border-radius: 999px; padding: 6px 12px; font-size: 13px; color: #17212B; cursor: pointer; min-height: 32px; }
     .act.main { background: #17212B; border-color: #17212B; color: #fff; }
@@ -656,12 +682,18 @@
       .what { color: #9AA6B2; }
       .foot { border-color: #2C3640; }
       .act { color: #E6EBEF; border-color: #3A4652; }
+      .copy, .chev, .none { color: #9AA6B2; }
+      .copy:hover, .copy:focus-visible, .more:hover { background: #232C35; color: #E6EBEF; }
+      .more { color: #E6EBEF; border-color: #2C3640; }
+      .find { background: #11161B; border-color: #3A4652; }
+      .find:focus { border-color: #E6EBEF; }
       .act.main { background: #F2B705; border-color: #F2B705; color: #17212B; }
     }`;
 
   let ui = null;
   let current = null;
   let chipBusy = false;
+  let detailsOpen = false; // "All my details" expanded in the suggestion box
 
   function getUI() {
     if (ui) return ui;
@@ -670,10 +702,11 @@
     const root = host.attachShadow({ mode: "closed" });
     root.innerHTML = `<style>${CSS}</style><div class="chip" hidden></div><button class="fab" type="button" hidden></button><div class="toast" role="status" hidden></div><div class="panel" role="dialog" aria-label="Apply Kit" tabindex="-1" hidden></div>`;
     document.documentElement.appendChild(host);
-    ui = { chip: root.querySelector(".chip"), fab: root.querySelector(".fab"), toast: root.querySelector(".toast"), panel: root.querySelector(".panel") };
+    ui = { root, host, chip: root.querySelector(".chip"), fab: root.querySelector(".fab"), toast: root.querySelector(".toast"), panel: root.querySelector(".panel") };
     ui.fab.addEventListener("click", () => openReview());
     ui.panel.addEventListener("keydown", e => { if (e.key === "Escape") closePanel(); });
-    ui.chip.addEventListener("mousedown", e => e.preventDefault()); // keep focus in the form field
+    // Keep focus in the form field, except when you tap the search box.
+    ui.chip.addEventListener("mousedown", e => { if (!e.target.classList.contains("find")) e.preventDefault(); });
     ui.chip.addEventListener("pointerdown", () => { chipBusy = true; });
     return ui;
   }
@@ -689,6 +722,7 @@
 
   function hideChip() {
     if (ui) ui.chip.hidden = true;
+    detailsOpen = false;
   }
 
   function place() {
@@ -713,6 +747,68 @@
     return b;
   }
 
+  // Copies text from a tap in the page. Falls back to a hidden text box when the site's
+  // permissions don't allow the clipboard API.
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;";
+      getUI().root.append(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      return ok;
+    }
+  }
+
+  // The job description, for "Copy for chatbot": the biggest block of text on the page that
+  // isn't the form itself, or the page's summary if there isn't one.
+  function jobDescription(el) {
+    const blocks = [...document.querySelectorAll('[class*="description" i], [id*="description" i], [class*="posting" i], [class*="job" i], article, main, section')]
+      .filter(n => !n.contains(el) && n.querySelectorAll("input, textarea, select").length <= 2)
+      .map(n => (n.innerText || "").trim())
+      .filter(t => t.length > 300)
+      .sort((x, y) => y.length - x.length);
+    const meta = document.querySelector('meta[name="description"], meta[property="og:description"]');
+    return (blocks[0] || (meta && meta.content) || "").replace(/\n{3,}/g, "\n\n").slice(0, 8000);
+  }
+
+  // One block to paste into a chatbot along with your resume.
+  function chatbotPrompt(el, question) {
+    const { company, role } = describeApplication();
+    const p = data.profile;
+    const now = p.currentTitle ? `I'm currently ${/^[aeiou]/i.test(p.currentTitle) ? "an" : "a"} ${p.currentTitle}${p.currentCompany ? ` at ${p.currentCompany}` : ""}${p.yearsExperience ? `, with ${p.yearsExperience} years of experience` : ""}.` : "";
+    const jd = jobDescription(el);
+    const past = rankAnswers(question).slice(0, 3);
+    return [
+      `I'm applying for ${role ? `the ${role} role` : "a role"}${company ? ` at ${company}` : ""}. ${now}`.trim(),
+      "Help me answer the application question below in my own voice. Use my resume if I've attached it, and my past answers for facts and tone. Keep it concise unless the question asks for detail, and don't invent experience I don't have.",
+      `\nQuestion:\n${question}`,
+      el.value.trim() ? `\nMy draft so far:\n${el.value.trim()}` : "",
+      jd ? `\nJob description:\n${jd}` : "",
+      past.length ? "\nMy past answers to similar questions:\n" + past.map((a, i) => `${i + 1}. Q: ${a.q}\n   A: ${a.a}`).join("\n\n") : ""
+    ].filter(Boolean).join("\n");
+  }
+
+  // A row in the suggestion box: tap it to fill, or the copy button to copy.
+  function detailRow(title, text, el) {
+    const fill = button("opt", "", () => fillOne(el, text));
+    fill.append(make("span", "what", title), make("span", "val", text));
+    const copy = button("copy", "", async () => {
+      const ok = await copyText(text);
+      toast(ok ? "Copied. Paste it where you need it." : "Couldn’t copy on this page.");
+      if (ok) { copy.replaceChildren(icon(PATH.check)); setTimeout(() => copy.replaceChildren(icon(PATH.copy)), 1500); }
+    });
+    copy.setAttribute("aria-label", "Copy " + title);
+    copy.title = "Copy";
+    copy.append(icon(PATH.copy));
+    return make("div", "optrow", fill, copy);
+  }
+
   function showChipFor(el) {
     if (!active() || !isField(el) || (ui && !ui.panel.hidden)) return hideChip();
     const label = labelFor(el);
@@ -729,19 +825,46 @@
       }
     }
     const canSave = questiony && label && el.tagName !== "SELECT" && el.value.trim().length >= 20;
-    if (!items.length && !canSave) return hideChip();
+    const everything = allDetails(data);
+    if (!items.length && !canSave && !everything.length) return hideChip();
 
     const { chip } = getUI();
-    chip.replaceChildren();
-    for (const it of items) {
-      const b = button("opt", "", () => fillOne(el, it.text));
-      const t = document.createElement("span"); t.className = "what"; t.textContent = it.title;
-      const val = document.createElement("span"); val.className = "val"; val.textContent = it.text;
-      b.append(t, val);
-      chip.append(b);
+    chip.replaceChildren(...items.map(it => detailRow(it.title, it.text, el)));
+
+    // Everything you've saved, for fields Apply Kit didn't recognise (or got wrong).
+    if (el.tagName !== "SELECT" && everything.length) {
+      const toggle = button("more", "", () => { detailsOpen = !detailsOpen; showChipFor(el); });
+      toggle.setAttribute("aria-expanded", String(detailsOpen));
+      toggle.append(items.length ? "All my details" : "Pick from my details", make("span", "chev" + (detailsOpen ? " up" : ""), icon(PATH.chevron)));
+      chip.append(toggle);
+      if (detailsOpen) {
+        const search = document.createElement("input");
+        search.type = "search";
+        search.className = "find";
+        search.placeholder = "Search my details";
+        search.setAttribute("aria-label", "Search my details");
+        const list = make("div", "all");
+        const draw = () => {
+          const q = normalize(search.value);
+          const shown = everything.filter(d => !q || normalize(`${d.name} ${d.value}`).includes(q));
+          list.replaceChildren(...shown.map(d => detailRow(d.name, d.value, el)));
+          if (!shown.length) list.append(make("p", "none", "Nothing matches."));
+        };
+        search.addEventListener("input", draw);
+        search.addEventListener("keydown", e => { if (e.key === "Escape") { hideChip(); el.focus(); } });
+        draw();
+        chip.append(search, list);
+      }
     }
+
     const foot = document.createElement("div");
     foot.className = "foot";
+    if (questiony && label && el.tagName !== "SELECT") {
+      foot.append(button("act", "Copy for chatbot", async () => {
+        const ok = await copyText(chatbotPrompt(el, label));
+        toast(ok ? "Copied the question, job description and your past answers. Paste it into your chatbot." : "Couldn’t copy on this page.");
+      }));
+    }
     if (canSave) foot.append(button("act main", "Save as answer", () => saveAnswerFrom(el, label)));
     foot.append(button("act", "Hide", () => { hideChip(); el.focus(); }));
     chip.append(foot);
@@ -756,7 +879,9 @@
     check: "M3.5 8.5l3 3 6-7",
     close: "M4 4l8 8M12 4l-8 8",
     locate: "M8 1.5v2.5M8 12v2.5M1.5 8H4M12 8h2.5M8 5a3 3 0 1 1 0 6a3 3 0 1 1 0-6",
-    warn: "M8 2.2l6.3 11.3H1.7zM8 6.6v3.2M8 11.7v.1"
+    warn: "M8 2.2l6.3 11.3H1.7zM8 6.6v3.2M8 11.7v.1",
+    copy: "M5.5 5.5V3.2c0-.4.3-.7.7-.7h6.6c.4 0 .7.3.7.7v6.6c0 .4-.3.7-.7.7h-2.3M3.2 5.5h6.6c.4 0 .7.3.7.7v6.6c0 .4-.3.7-.7.7H3.2c-.4 0-.7-.3-.7-.7V6.2c0-.4.3-.7.7-.7z",
+    chevron: "M4 6.5l4 4 4-4"
   };
   function icon(d) {
     const NS = "http://www.w3.org/2000/svg";
@@ -921,11 +1046,17 @@
     if (e.target !== current) return;
     setTimeout(() => {
       if (chipBusy) { chipBusy = false; return; }
-      if (document.activeElement !== current) hideChip();
+      // Focus inside the box itself (its search field) shows up as focus on its host element.
+      if (document.activeElement !== current && !(ui && document.activeElement === ui.host)) hideChip();
     }, 200);
   }, true);
 
   document.addEventListener("input", e => { if (e.target === current && !filling) rechipSoon(); }, true);
+  // Tapping anywhere else on the page closes the suggestion box. (Taps inside it arrive here
+  // as taps on its host element, because it lives in a closed shadow root.)
+  document.addEventListener("pointerdown", e => {
+    if (ui && !ui.chip.hidden && e.target !== ui.host && e.target !== current) hideChip();
+  }, true);
   window.addEventListener("scroll", placeSoon, { capture: true, passive: true });
   window.addEventListener("resize", placeSoon, { passive: true });
   if (window.visualViewport) window.visualViewport.addEventListener("resize", placeSoon);

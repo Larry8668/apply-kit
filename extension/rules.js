@@ -68,3 +68,15 @@ function siteOf(host) {
   const n = p.length > 2 && p[p.length - 1].length === 2 && p[p.length - 2].length <= 3 ? 3 : 2;
   return p.slice(-n).join(".");
 }
+
+// Every value you've saved, for picking by hand when a field isn't recognised: profile
+// fields in settings order, then extra fields, then saved answers.
+function allDetails({ profile = {}, custom = [], answers = [] }) {
+  const out = FIELDS.filter(f => profile[f.key]).map(f => ({ group: f.group, name: f.label, value: profile[f.key] }));
+  if (!profile.fullName && profile.firstName && profile.lastName) {
+    out.splice(2, 0, { group: "Basics", name: "Full name", value: `${profile.firstName} ${profile.lastName}` });
+  }
+  for (const c of custom) if (c.value) out.push({ group: "Extra fields", name: c.label || "Extra field", value: c.value });
+  for (const a of answers) if (a.a) out.push({ group: "Saved answers", name: a.q || "Saved answer", value: a.a });
+  return out;
+}
