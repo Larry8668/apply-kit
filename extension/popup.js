@@ -7,6 +7,7 @@ const reports = new Map(); // frameId → what that frame found
 
 const PATH = {
   check: "M3.5 8.5l3 3 6-7",
+  copy: "M5.5 5.5V3.2c0-.4.3-.7.7-.7h6.6c.4 0 .7.3.7.7v6.6c0 .4-.3.7-.7.7h-2.3M3.2 5.5h6.6c.4 0 .7.3.7.7v6.6c0 .4-.3.7-.7.7H3.2c-.4 0-.7-.3-.7-.7V6.2c0-.4.3-.7.7-.7z",
   locate: "M8 1.5v2.5M8 12v2.5M1.5 8H4M12 8h2.5M8 5a3 3 0 1 1 0 6a3 3 0 1 1 0-6",
   warn: "M8 2.2l6.3 11.3H1.7zM8 6.6v3.2M8 11.7v.1"
 };
@@ -59,6 +60,45 @@ document.getElementById("ver").textContent = "Apply Kit " + browser.runtime.getM
 document.getElementById("edit").addEventListener("click", () => {
   browser.runtime.openOptionsPage();
   window.close();
+});
+
+// For fields Apply Kit can't fill itself (like Workday's dropdowns): tap a detail to copy
+// it, then paste or type it where it goes.
+document.getElementById("copy").addEventListener("click", async () => {
+  const details = allDetails(await AK.load());
+  const search = make("input", "find");
+  search.type = "search";
+  search.placeholder = "Search my details";
+  search.setAttribute("aria-label", "Search my details");
+  const list = make("div", "list");
+  const draw = () => {
+    const q = normalize(search.value);
+    const shown = details.filter(d => !q || normalize(`${d.name} ${d.value}`).includes(q));
+    list.replaceChildren(...shown.map(d => {
+      const row = button("pick", "", async () => {
+        try {
+          await navigator.clipboard.writeText(d.value);
+          tick.replaceChildren(icon(PATH.check));
+          tick.className = "tick";
+          setTimeout(() => { tick.replaceChildren(icon(PATH.copy)); tick.className = "copyicon"; }, 1500);
+        } catch {
+          list.prepend(make("p", "nonefound", "Couldn’t copy. Try again."));
+        }
+      });
+      const tick = make("span", "copyicon", icon(PATH.copy));
+      row.append(make("span", "text", make("span", "name", d.name), make("span", "valtext", d.value)), tick);
+      return make("div", "row", row);
+    }));
+    if (!shown.length) list.append(make("p", "nonefound", details.length ? "Nothing matches." : "Your profile is empty. Add your details in Settings."));
+  };
+  search.addEventListener("input", draw);
+  draw();
+  view.replaceChildren(
+    head("Copy a detail", "Tap one to copy it, then paste it where it goes."),
+    make("div", "findwrap", search),
+    list,
+    make("div", "bar", button("btn", "Back", () => location.reload()), button("btn main", "Done", () => window.close())));
+  search.focus();
 });
 
 document.getElementById("apps").addEventListener("click", async () => {
