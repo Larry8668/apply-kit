@@ -19,6 +19,24 @@
     </section>
 
     <section>
+      <h2>Resume</h2>
+      <p class="hint">Attached to resume upload fields when you fill a form. The PDF is kept on this device only, because sync storage is too small for it. Its name and date sync, so your other device can tell you when its copy is out of date.</p>
+      <div id="resumeCard"></div>
+      <div class="row">
+        <label class="button secondary">Upload PDF<input type="file" id="resumeFile" accept="application/pdf,.pdf" hidden></label>
+      </div>
+      <div class="field linkfield">
+        <label for="resumeLink">Or download it from a link</label>
+        <div class="row">
+          <input type="url" id="resumeLink" placeholder="https://drive.google.com/file/d/…" autocomplete="off">
+          <button type="button" id="resumeFetch">Download</button>
+        </div>
+        <p class="fieldhint">Google Drive, Google Docs, Dropbox, or a direct link to a PDF. Anyone with the link must be able to view it. Firefox asks once for permission to reach that site; nothing is downloaded until you tap Download.</p>
+      </div>
+      <p id="resumeMsg" class="fieldhint" role="status"></p>
+    </section>
+
+    <section>
       <h2>Extra fields</h2>
       <p class="hint">For questions the profile doesn’t cover. When a field’s label contains one of the keywords, this value is filled in.</p>
       <div id="customList"></div>

@@ -122,6 +122,124 @@ function renderAnswers() {
   }
 }
 
+// ---------- Resume ----------
+const kb = n => Math.max(1, Math.round(n / 1024)) + " KB";
+const when = t => new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+
+function setResumeMsg(text, isError) {
+  const m = $("#resumeMsg");
+  m.textContent = text;
+  m.classList.toggle("error", !!isError);
+}
+
+// Turns a share link into a direct download, plus the sites it redirects through.
+// Those are the only sites Firefox is asked to let Apply Kit reach.
+function resumeSource(link) {
+  let u;
+  try { u = new URL(link); } catch { throw new Error("That doesn’t look like a link."); }
+  if (u.protocol !== "https:") throw new Error("The link needs to start with https://.");
+  const google = ["https://*.googleusercontent.com/*"];
+  let m = u.pathname.match(/\/file\/d\/([\w-]+)/);
+  if (u.hostname === "drive.google.com") {
+    const id = m ? m[1] : u.searchParams.get("id");
+    if (!id) throw new Error("That Google Drive link doesn’t point to a file.");
+    return { url: `https://drive.google.com/uc?export=download&id=${encodeURIComponent(id)}`,
+      origins: ["https://drive.google.com/*", "https://drive.usercontent.google.com/*", ...google] };
+  }
+  m = u.pathname.match(/\/document\/d\/([\w-]+)/);
+  if (u.hostname === "docs.google.com" && m) {
+    return { url: `https://docs.google.com/document/d/${m[1]}/export?format=pdf`, origins: ["https://docs.google.com/*", ...google] };
+  }
+  if (/(^|\.)dropbox\.com$/.test(u.hostname)) {
+    u.searchParams.set("dl", "1");
+    return { url: u.href, origins: [u.origin + "/*", "https://*.dropboxusercontent.com/*"] };
+  }
+  return { url: u.href, origins: [u.origin + "/*"] };
+}
+
+function nameFrom(res, url) {
+  const cd = res.headers.get("content-disposition") || "";
+  const star = cd.match(/filename\*=(?:UTF-8'')?([^;]+)/i);
+  const plain = cd.match(/filename="?([^";]+)"?/i);
+  let name = "";
+  try { name = star ? decodeURIComponent(star[1].trim()) : plain ? plain[1].trim() : ""; } catch { /* odd header */ }
+  if (!name) name = decodeURIComponent(new URL(url).pathname.split("/").pop() || "");
+  if (!/\.pdf$/i.test(name)) name = "Resume.pdf";
+  return name;
+}
+
+async function fetchResume(link) {
+  let src;
+  try { src = resumeSource(link); } catch (e) { setResumeMsg(e.message, true); return; }
+  // Firefox only shows its permission prompt in direct response to a tap, so this has to
+  // be the first thing that waits.
+  const granted = await browser.permissions.request({ origins: src.origins });
+  if (!granted) { setResumeMsg("Firefox wasn’t given permission to reach that site, so nothing was downloaded.", true); return; }
+  setResumeMsg("Downloading…");
+  try {
+    const res = await fetch(src.url, { credentials: "omit" });
+    if (!res.ok) throw new Error(`The site answered with error ${res.status}.`);
+    const buf = await res.arrayBuffer();
+    const head = String.fromCharCode(...new Uint8Array(buf, 0, Math.min(5, buf.byteLength)));
+    if (head !== "%PDF-") throw new Error("That link gave a web page, not a PDF. Check that anyone with the link can view it.");
+    await AK.saveResume(buf, nameFrom(res, src.url), "link", link);
+    setResumeMsg("");
+    await loadAndRender();
+  } catch (e) {
+    setResumeMsg("Couldn’t download it. " + (e.message === "NetworkError when attempting to fetch resource." ? "Check the link and your connection." : e.message), true);
+  }
+}
+
+function renderResume() {
+  const card = $("#resumeCard");
+  const here = state.resumeHere, synced = state.resume;
+  card.replaceChildren();
+  // The other device has a newer resume than this one.
+  if (synced && (!here || synced.t > here.t)) {
+    const n = h("div", { class: "notice" }, h("span", {},
+      `Your other device has ${here ? "a newer resume" : "a resume"}: ${synced.name}, ${when(synced.t)}.`));
+    if (synced.link) n.append(h("button", { type: "button", onclick: () => fetchResume(synced.link) }, "Download it here"));
+    else n.append(h("span", {}, "Upload the same PDF here to use it on this device."));
+    card.append(n);
+  }
+  if (!here) {
+    card.append(h("div", { class: "card empty" }, "No resume on this device yet."));
+  } else {
+    const via = here.source === "link" ? "from your link" : "uploaded";
+    const remove = h("button", { type: "button", class: "text danger", onclick: async () => {
+      await AK.removeResume();
+      if (here.link) {
+        try { await browser.permissions.remove({ origins: resumeSource(here.link).origins }); } catch { /* already gone */ }
+      }
+      $("#resumeLink").value = "";
+      await loadAndRender();
+    } }, "Remove");
+    const actions = h("div", {});
+    if (here.link) actions.append(h("button", { type: "button", class: "text", onclick: () => fetchResume(here.link) }, "Refresh"));
+    actions.append(remove);
+    card.append(h("div", { class: "card" },
+      h("span", { class: "doc", "aria-hidden": "true" }, "PDF"),
+      h("div", { class: "what" }, h("span", { class: "name" }, here.name), h("span", { class: "meta" }, `${kb(here.size)} · ${via} ${when(here.t)}`)),
+      actions));
+  }
+  const link = (here && here.link) || (synced && synced.link) || "";
+  if (link && !$("#resumeLink").value) $("#resumeLink").value = link;
+}
+
+$("#resumeFetch").addEventListener("click", () => fetchResume($("#resumeLink").value.trim()));
+$("#resumeFile").addEventListener("change", async e => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  try {
+    await AK.saveResume(await file.arrayBuffer(), file.name, "upload");
+    setResumeMsg("");
+    await loadAndRender();
+  } catch (err) {
+    setResumeMsg("Couldn’t save it. " + err.message, true);
+  }
+});
+
 async function updateUsage() {
   try {
     const bytes = await browser.storage.sync.getBytesInUse(null);
@@ -136,6 +254,7 @@ async function loadAndRender() {
   renderProfile();
   renderCustom();
   renderAnswers();
+  renderResume();
   updateUsage();
 }
 
@@ -182,7 +301,7 @@ $("#import").addEventListener("change", async e => {
 
 // Pick up changes synced from your other device, unless you're mid-edit.
 browser.storage.onChanged.addListener((changes, area) => {
-  if (area !== "sync") return;
+  if (area !== "sync" && !(area === "local" && changes.resumeInfo)) return;
   const editing = document.activeElement && document.activeElement.matches("input, textarea");
   if (!editing && !timers.size) loadAndRender();
 });

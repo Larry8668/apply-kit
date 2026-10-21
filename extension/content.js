@@ -150,6 +150,16 @@
   }
   // Styled radio buttons often hide the real input and show only the label.
   const radioSeen = r => [r, ...(r.labels || [])].some(n => visible(n) && !concealed(n));
+  // Upload fields are almost always a hidden input behind a visible button or drop area.
+  function fileSeen(el) {
+    if (radioSeen(el)) return true;
+    let n = el.parentElement;
+    for (let i = 0; i < 3 && n && n !== document.body; i++, n = n.parentElement) {
+      if (visible(n) && !concealed(n)) return true;
+    }
+    return false;
+  }
+  const RESUME = /(^| )(resume|résumé|cv|curriculum vitae)( |$)/u;
 
   // Stable ids, so the review panel and toolbar menu can say which fields to fill.
   const ids = new WeakMap();
@@ -162,6 +172,18 @@
     const groups = new Map();
     for (const el of document.querySelectorAll("input, textarea, select")) {
       if (el.disabled) continue;
+      if (el.tagName === "INPUT" && (el.type || "").toLowerCase() === "file") {
+        const r = data.resumeHere;
+        if (!r || el.files.length) continue;
+        const label = labelFor(el);
+        const hints = hintsFor(el, label).join(" ");
+        const accept = (el.getAttribute("accept") || "").toLowerCase();
+        if (!RESUME.test(hints) || /\bcover\b/u.test(hints)) continue;
+        if (accept && !/pdf|application\/\*|\*\/\*/.test(accept)) continue;
+        out.push({ id: idOf(el), kind: "file", el, field: "Resume", label, value: r.name,
+          shown: `${r.name} · ${Math.max(1, Math.round(r.size / 1024))} KB`, hidden: !fileSeen(el) });
+        continue;
+      }
       if (el.tagName === "INPUT" && (el.type || "").toLowerCase() === "radio") {
         const k = el.name || el.closest('[role="radiogroup"], fieldset') || el;
         if (!groups.has(k)) groups.set(k, []);
@@ -219,16 +241,34 @@
   const flashTarget = it => (it.kind === "radio" && it.el.labels && it.el.labels[0] ? it.el.labels[0] : it.el);
   let lastFill = []; // what the latest fill changed, for Undo
 
+  // Puts the resume into an upload field, the same way choosing it yourself would.
+  function attachFile(el, file) {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    el.files = dt.files;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
   // Fills the fields with these ids. Scanning again first means anything you've typed into
   // since the review, or that the page removed, is left alone.
-  function fillIds(wanted) {
+  async function fillIds(wanted) {
     const want = new Set(wanted);
+    let resume = null;
+    try {
+      resume = await AK.loadResumeFile();
+    } catch (e) {
+      console.warn("[Apply Kit]", e);
+    }
     filling = true;
     const done = [];
     for (const it of scan()) {
       if (!want.has(it.id)) continue;
       const prev = it.el.value;
-      if (it.kind === "radio") it.el.click();
+      if (it.kind === "file") {
+        if (!resume) continue;
+        attachFile(it.el, resume);
+      } else if (it.kind === "radio") it.el.click();
       else setValue(it.el, it.value);
       it.el.dispatchEvent(new Event("blur"));
       flash(flashTarget(it));
@@ -250,6 +290,11 @@
       if (it.kind === "radio") {
         if (!it.el.checked) continue;
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked").set.call(it.el, false);
+        it.el.dispatchEvent(new Event("input", { bubbles: true }));
+        it.el.dispatchEvent(new Event("change", { bubbles: true }));
+      } else if (it.kind === "file") {
+        if (!it.el.files.length || it.el.files[0].name !== it.value) continue;
+        it.el.value = "";
         it.el.dispatchEvent(new Event("input", { bubbles: true }));
         it.el.dispatchEvent(new Event("change", { bubbles: true }));
       } else {
@@ -608,7 +653,7 @@
     const picked = new Set(items.filter(it => !it.hidden && !info.foreign).map(it => it.id));
     const seen = items.filter(it => !it.hidden), unseen = items.filter(it => it.hidden);
 
-    const fill = button("btn main", "", () => showDone(fillIds([...picked])));
+    const fill = button("btn main", "", async () => showDone(await fillIds([...picked])));
     const update = () => {
       fill.textContent = picked.size ? "Fill " + plural(picked.size, "field") : "Nothing selected";
       fill.disabled = !picked.size;
@@ -696,7 +741,7 @@
   new MutationObserver(refreshSoon).observe(document.documentElement, { childList: true, subtree: true });
 
   browser.storage.onChanged.addListener((changes, area) => {
-    if (area === "sync") reload().then(refreshFab);
+    if (area === "sync" || (area === "local" && changes.resumeInfo)) reload().then(refreshFab);
   });
 
   // The toolbar menu asks every frame what it found, shows one combined review, then
@@ -710,7 +755,7 @@
       refreshFab();
       return Promise.resolve(true);
     }
-    if (msg.cmd === "fill") return Promise.resolve(fillIds(msg.ids || []).map(brief));
+    if (msg.cmd === "fill") return fillIds(msg.ids || []).then(done => done.map(brief));
     if (msg.cmd === "undo") return Promise.resolve(undoLast());
     if (msg.cmd === "locate") {
       const it = scan().find(x => x.id === msg.id);

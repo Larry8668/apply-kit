@@ -2,6 +2,7 @@
 // Limits: about 100 KB total, 8 KB per item, so each saved answer is its own item.
 var AK = (() => {
   const area = browser.storage.sync;
+  const local = browser.storage.local;
   const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
   async function load() {
@@ -10,7 +11,8 @@ var AK = (() => {
       .filter(k => k.startsWith("ans:"))
       .map(k => ({ id: k.slice(4), q: all[k].q || "", a: all[k].a || "", t: all[k].t || 0 }))
       .sort((x, y) => y.t - x.t);
-    return { profile: all.profile || {}, custom: all.custom || [], answers };
+    const { resumeInfo } = await local.get("resumeInfo");
+    return { profile: all.profile || {}, custom: all.custom || [], answers, resume: all.resume || null, resumeHere: resumeInfo || null };
   }
 
   const saveProfile = p => area.set({ profile: p });
@@ -38,6 +40,7 @@ var AK = (() => {
     if (Object.keys(items).length > MAX_ITEMS) throw new Error("The backup has more items than sync storage allows.");
 
     const before = await area.get(null);
+    if (before.resume) items.resume = before.resume;
     await area.clear();
     try {
       await area.set(items);
@@ -47,5 +50,36 @@ var AK = (() => {
     }
   }
 
-  return { newId, load, saveProfile, saveCustom, saveAnswer, deleteAnswer, replaceAll };
+  // The resume PDF is too big for sync storage, so the file stays on each device in
+  // storage.local. Only its name, size, date and link (if any) sync, under "resume", so
+  // the other device can tell when its copy is out of date.
+  const MAX_RESUME = 5 * 1024 * 1024;
+
+  async function saveResume(buffer, name, source, link = "") {
+    const bytes = new Uint8Array(buffer);
+    if (bytes.length > MAX_RESUME) throw new Error("That PDF is over 5 MB. Most application forms won’t accept it either.");
+    if (String.fromCharCode(...bytes.subarray(0, 5)) !== "%PDF-") throw new Error("That isn’t a PDF file.");
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    const info = { name: name.replace(/[\\/]/g, "_"), size: bytes.length, t: Date.now(), source, link };
+    await local.set({ resumeInfo: info, resumeData: btoa(bin) });
+    await area.set({ resume: info });
+    return info;
+  }
+
+  async function loadResumeFile() {
+    const { resumeInfo, resumeData } = await local.get(["resumeInfo", "resumeData"]);
+    if (!resumeInfo || !resumeData) return null;
+    const bin = atob(resumeData);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new File([bytes], resumeInfo.name, { type: "application/pdf", lastModified: resumeInfo.t });
+  }
+
+  async function removeResume() {
+    await local.remove(["resumeInfo", "resumeData"]);
+    await area.remove("resume");
+  }
+
+  return { newId, load, saveProfile, saveCustom, saveAnswer, deleteAnswer, replaceAll, saveResume, loadResumeFile, removeResume };
 })();

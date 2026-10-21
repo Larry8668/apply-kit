@@ -13,6 +13,7 @@
   },
   "icons": { "48": "icon.svg", "96": "icon.svg" },
   "permissions": ["storage"],
+  "optional_permissions": ["https://*/*"],
   "browser_action": {
     "default_icon": "icon.svg",
     "default_title": "Apply Kit",
