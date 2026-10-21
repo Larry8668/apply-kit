@@ -3,20 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    :root { --bg: #F3F5F7; --ink: #17212B; --muted: #5B6875; --line: #D5DBE1; --mark: #F2B705; color-scheme: light; }
-    @media (prefers-color-scheme: dark) { :root { --bg: #11161B; --ink: #E6EBEF; --muted: #9AA6B2; --line: #2F3A45; color-scheme: dark; } }
-    body { margin: 0; padding: 14px; min-width: 240px; background: var(--bg); color: var(--ink); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-    button { display: block; width: 100%; min-height: 44px; margin-bottom: 8px; border-radius: 999px; font: inherit; font-weight: 600; cursor: pointer; border: 1px solid var(--ink); background: var(--ink); color: var(--bg); }
-    button.secondary { background: transparent; color: var(--ink); border-color: var(--line); }
-    button:focus-visible { outline: 3px solid var(--mark); outline-offset: 2px; }
-    p { margin: 6px 2px 0; color: var(--muted); font-size: 13px; }
-  </style>
+  <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <button id="fill" type="button">Fill this page</button>
-  <button id="edit" type="button" class="secondary">Edit profile</button>
-  <p id="msg" role="status"></p>
+  <main id="view">
+    <div class="start">
+      <button id="fill" type="button" class="btn main">Fill this page</button>
+      <button id="edit" type="button" class="btn">Edit profile</button>
+      <p id="msg" class="msg" role="status"></p>
+    </div>
+  </main>
+  <script src="rules.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
