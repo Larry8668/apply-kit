@@ -123,6 +123,7 @@ function renderAnswers() {
 }
 
 // ---------- Resume ----------
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const kb = n => Math.max(1, Math.round(n / 1024)) + " KB";
 const when = t => new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 
@@ -274,8 +275,20 @@ $("#addAns").addEventListener("click", () => {
 
 $("#ansSearch").addEventListener("input", renderAnswers);
 
+// What a backup file or transfer code holds. The resume isn't included: it's too big
+// for a code, and each device keeps its own copy.
+const backupData = () => ({ version: 1, profile: state.profile, custom: state.custom, answers: state.answers });
+
+async function importBackup(parsed, what) {
+  if (!parsed || typeof parsed.profile !== "object") throw new Error(`That ${what} isn’t from Apply Kit.`);
+  if (!confirm(`Replace everything here with this ${what}?`)) return false;
+  await AK.replaceAll(parsed);
+  await loadAndRender();
+  return true;
+}
+
 $("#export").addEventListener("click", () => {
-  const blob = new Blob([JSON.stringify({ version: 1, ...state }, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify(backupData(), null, 2)], { type: "application/json" });
   const a = h("a", { href: URL.createObjectURL(blob), download: `apply-kit-backup-${new Date().toISOString().slice(0, 10)}.json` });
   document.body.append(a);
   a.click();
@@ -288,12 +301,65 @@ $("#import").addEventListener("change", async e => {
   e.target.value = "";
   if (!file) return;
   try {
-    const parsed = JSON.parse(await file.text());
-    if (!parsed || typeof parsed.profile !== "object") throw new Error("That file isn’t an Apply Kit backup.");
-    if (!confirm("Replace everything here with this backup?")) return;
-    await AK.replaceAll(parsed);
-    await loadAndRender();
-    setStatus("Backup imported");
+    if (await importBackup(JSON.parse(await file.text()), "backup file")) setStatus("Backup imported");
+  } catch (err) {
+    setStatus("Couldn’t import: " + err.message, true);
+  }
+});
+
+// ---------- Transfer code ----------
+// The same data as a backup file, gzipped and base64-encoded into one line of text you
+// can paste into a notes app or a chat with yourself. Not encrypted.
+const CODE_PREFIX = "APPLYKIT1.";
+
+async function gzip(text, compress) {
+  const stream = new Blob([text]).stream().pipeThrough(compress ? new CompressionStream("gzip") : new DecompressionStream("gzip"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+function toBase64Url(bytes) {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function fromBase64Url(text) {
+  const bin = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(bin, c => c.charCodeAt(0));
+}
+
+$("#makeCode").addEventListener("click", async () => {
+  const code = CODE_PREFIX + toBase64Url(await gzip(JSON.stringify(backupData()), true));
+  $("#codeText").value = code;
+  $("#codeMeta").textContent = `${code.length.toLocaleString()} characters · ${plural(state.answers.length, "saved answer")}`;
+  $("#codeOut").hidden = false;
+  $("#codeText").select();
+});
+
+$("#copyCode").addEventListener("click", async () => {
+  const box = $("#codeText");
+  try {
+    await navigator.clipboard.writeText(box.value);
+  } catch {
+    box.select();
+    document.execCommand("copy");
+  }
+  setStatus("Transfer code copied");
+});
+
+$("#useCode").addEventListener("click", async () => {
+  // Chat apps and email can wrap long lines, so ignore any whitespace.
+  const raw = $("#codeIn").value.replace(/\s+/g, "");
+  try {
+    if (!raw.startsWith(CODE_PREFIX)) throw new Error("That isn’t an Apply Kit transfer code. It should start with " + CODE_PREFIX);
+    let parsed;
+    try {
+      parsed = JSON.parse(new TextDecoder().decode(await gzip(fromBase64Url(raw.slice(CODE_PREFIX.length)), false)));
+    } catch {
+      throw new Error("The code is incomplete or got changed on the way. Copy it again in full.");
+    }
+    if (await importBackup(parsed, "transfer code")) {
+      $("#codeIn").value = "";
+      setStatus("Transfer code imported");
+    }
   } catch (err) {
     setStatus("Couldn’t import: " + err.message, true);
   }

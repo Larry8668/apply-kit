@@ -108,6 +108,13 @@ button:focus-visible, .button:focus-within { outline: 3px solid var(--mark); out
 .linkfield input { flex: 1; min-width: 0; }
 #resumeMsg.error { color: var(--danger); }
 #resumeMsg:empty { display: none; }
+h3 { margin: 26px 0 4px; font-size: 1rem; font-weight: 650; }
+.codebox { margin: 12px 0 4px; display: grid; gap: 10px; }
+.codebox[hidden] { display: none; }
+.codebox textarea, .codein textarea { min-height: 0; font: 0.8125rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; resize: none; }
+.codebox .row { align-items: center; }
+.codein { margin: 18px 0 10px; }
+
 @media (prefers-reduced-motion: no-preference) {
   input, textarea { transition: box-shadow 120ms ease; }
 }

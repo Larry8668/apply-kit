@@ -53,13 +53,30 @@
 
     <section>
       <h2>Sync and backup</h2>
-      <p class="hint">Firefox Sync copies this between desktop computers when Add-ons is selected in its settings. Firefox for Android doesn’t sync extension data yet, so to move everything to or from a phone, export a backup on one device and import it on the other.</p>
+      <p class="hint">Firefox Sync copies this between desktop computers when Add-ons is selected in its settings. Firefox for Android doesn’t sync extension data yet, so use a transfer code or a backup file to move everything to or from a phone.</p>
+
+      <h3>Transfer code</h3>
+      <p class="hint">The quickest way to a phone. Create a code here, send it to yourself (a notes app, email, or a chat with yourself), and paste it into settings on the other device. It holds your profile, extra fields and saved answers, but not your resume. The code isn’t encrypted, so anyone who sees it can read your details.</p>
+      <button type="button" id="makeCode" class="secondary">Create transfer code</button>
+      <div id="codeOut" class="codebox" hidden>
+        <textarea id="codeText" rows="4" readonly aria-label="Transfer code"></textarea>
+        <div class="row"><button type="button" id="copyCode">Copy code</button><span id="codeMeta" class="meta"></span></div>
+      </div>
+      <div class="field codein">
+        <label for="codeIn">Paste a code from your other device</label>
+        <textarea id="codeIn" rows="3" placeholder="APPLYKIT1.…" autocomplete="off" spellcheck="false"></textarea>
+      </div>
+      <button type="button" id="useCode" class="secondary">Import code</button>
+
+      <h3>Backup file</h3>
+      <p class="hint">The same data as a file, for keeping a copy somewhere safe.</p>
       <div class="row">
         <button type="button" id="export">Export backup</button>
         <label class="button secondary">Import backup<input type="file" id="import" accept="application/json,.json" hidden></label>
       </div>
       <p id="usage" class="hint"></p>
     </section>
+
   </main>
   <script src="rules.js"></script>
   <script src="storage.js"></script>
