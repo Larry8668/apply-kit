@@ -4,6 +4,14 @@
   "private": true,
   "description": "Personal Firefox extension that fills job applications from a profile you keep.",
   "license": "MIT",
+  "homepage": "https://github.com/Larry8668/apply-kit#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Larry8668/apply-kit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Larry8668/apply-kit/issues"
+  },
   "scripts": {
     "lint": "web-ext lint --self-hosted --source-dir extension",
     "start": "web-ext run --source-dir extension",
