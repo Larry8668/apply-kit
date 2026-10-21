@@ -8,15 +8,14 @@ A Firefox extension that fills job applications from a profile you keep. You see
 
 It's a personal project, built for one person's job search and shared in case it's useful. It isn't on the Firefox add-ons store. Signed builds are on the [releases page](https://github.com/Larry8668/apply-kit/releases/latest).
 
-<p>
-  <img src="docs/screenshots/review-panel-desktop.png" alt="Review panel on a desktop application form: visible fields are ticked, and fields hidden on the page are listed separately, unticked, with a warning" width="58%">
-  <img src="docs/screenshots/filled-phone-dark.png" alt="On a phone in dark mode: a bottom sheet listing the 12 fields that were filled, with Undo and Done buttons" width="20%">
-  <img src="docs/screenshots/toolbar-review.png" alt="Toolbar menu reviewing every part of a page: a field from an ad on another site is flagged and unticked" width="20%">
+<p align="center">
+  <img src="docs/screenshots/hero.png" alt="Left: a careers page in desktop Firefox with Apply Kit's review panel open. Visible fields are ticked; two fields hidden on the page are listed separately, unticked, with a warning. Right: a phone in dark mode showing the 'Filled 10 fields' summary with Undo and Done buttons." width="100%">
 </p>
-
-<sub>Screenshots use a made-up profile on a test form.</sub>
+<p align="center"><sub>Shown with a made-up profile on a test page.</sub></p>
 
 ## What it does
+
+<img src="docs/screenshots/toolbar-menu.png" alt="The toolbar menu reviewing a whole page: the page itself and an embedded Greenhouse form start ticked, a hidden field is unticked, and an email field from an ad on another site is flagged 'Other site' and unticked." width="300" align="right">
 
 - **Review, then fill.** On pages that look like job applications (Greenhouse, Lever, Workday, Ashby, company career pages, and similar), a "Review N fields" button appears in the bottom-right corner. It opens a panel listing every field it would fill and the value it would use. Untick anything you don't want, tap the target icon to find a field on the page, then tap "Fill". Afterwards the panel shows what was filled, with Undo. Filled fields are highlighted in yellow. It never overwrites anything you've already typed, and it never submits the form.
 - **Hidden fields stay empty unless you tick them.** Fields you can't see (tiny, transparent, off-screen, or clipped away) are listed separately under "Hidden on the page" and start unticked, so a page can't quietly collect more than it shows.
