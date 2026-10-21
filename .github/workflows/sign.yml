@@ -1,0 +1,59 @@
+name: Sign and release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sign
+  cancel-in-progress: false
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+
+      - name: Work out the release tag
+        id: version
+        run: |
+          version=$(node -p "require('./extension/manifest.json').version")
+          tag="v$version"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "$tag" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match manifest version $version. Bump extension/manifest.json or retag."
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Sign with addons.mozilla.org (unlisted)
+        run: npm run sign
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_API_SECRET }}
+
+      - name: Upload the .xpi to a GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          shopt -s nullglob
+          files=(web-ext-artifacts/*.xpi)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::Signing produced no .xpi"
+            exit 1
+          fi
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            gh release create "$TAG" "${files[@]}" --target "$GITHUB_SHA" --title "Apply Kit $TAG" --notes "Signed unlisted build."
+          fi
