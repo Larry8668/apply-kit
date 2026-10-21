@@ -67,7 +67,12 @@
       <p class="hint">Firefox Sync copies this between desktop computers when Add-ons is selected in its settings. Firefox for Android doesn’t sync extension data yet, so use a transfer code or a backup file to move everything to or from a phone.</p>
 
       <h3>Transfer code</h3>
-      <p class="hint">The quickest way to a phone. Create a code here, send it to yourself (a notes app, email, or a chat with yourself), and paste it into settings on the other device. It holds your profile, extra fields and saved answers, but not your resume. The code isn’t encrypted, so anyone who sees it can read your details.</p>
+      <p class="hint">The quickest way to a phone. Create a code here, send it to yourself (a notes app, email, or a chat with yourself), and paste it into settings on the other device. It holds your profile, extra fields and saved answers, but not your resume. Without a passphrase the code isn’t encrypted, so anyone who sees it can read your details.</p>
+      <div class="field pass">
+        <label for="codePass">Passphrase (optional)</label>
+        <input type="password" id="codePass" autocomplete="new-password" placeholder="Leave blank for an unlocked code">
+        <p class="fieldhint">Set one to lock the code, then enter the same passphrase on the other device to import it. Without it, the code can’t be read.</p>
+      </div>
       <button type="button" id="makeCode" class="secondary">Create transfer code</button>
       <div id="codeOut" class="codebox" hidden>
         <textarea id="codeText" rows="4" readonly aria-label="Transfer code"></textarea>

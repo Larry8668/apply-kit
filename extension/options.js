@@ -387,6 +387,37 @@ $("#appsCopy").addEventListener("click", async () => {
 // The same data as a backup file, gzipped and base64-encoded into one line of text you
 // can paste into a notes app or a chat with yourself. Not encrypted.
 const CODE_PREFIX = "APPLYKIT1.";
+// Locked codes: AES-256-GCM with a key derived from your passphrase (PBKDF2-SHA-256).
+// Layout after the prefix: 16-byte salt, 12-byte IV, then the encrypted gzip data.
+const LOCKED_PREFIX = "APPLYKIT1L.";
+const PBKDF2_ROUNDS = 310000;
+
+async function passKey(pass, salt) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: PBKDF2_ROUNDS, hash: "SHA-256" },
+    base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+
+async function lock(bytes, pass) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await passKey(pass, salt), bytes));
+  const out = new Uint8Array(28 + sealed.length);
+  out.set(salt, 0);
+  out.set(iv, 16);
+  out.set(sealed, 28);
+  return out;
+}
+
+async function unlock(bytes, pass) {
+  try {
+    const key = await passKey(pass, bytes.subarray(0, 16));
+    return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: bytes.subarray(16, 28) }, key, bytes.subarray(28)));
+  } catch {
+    throw new Error("Wrong passphrase, or the code got changed on the way.");
+  }
+}
+
 async function gzip(text, compress) {
   const stream = new Blob([text]).stream().pipeThrough(compress ? new CompressionStream("gzip") : new DecompressionStream("gzip"));
   return new Uint8Array(await new Response(stream).arrayBuffer());
@@ -402,9 +433,11 @@ function fromBase64Url(text) {
 }
 
 $("#makeCode").addEventListener("click", async () => {
-  const code = CODE_PREFIX + toBase64Url(await gzip(JSON.stringify(backupData()), true));
+  const pass = $("#codePass").value;
+  const packed = await gzip(JSON.stringify(backupData()), true);
+  const code = pass ? LOCKED_PREFIX + toBase64Url(await lock(packed, pass)) : CODE_PREFIX + toBase64Url(packed);
   $("#codeText").value = code;
-  $("#codeMeta").textContent = `${code.length.toLocaleString()} characters · ${plural(state.answers.length, "saved answer")}`;
+  $("#codeMeta").textContent = `${code.length.toLocaleString()} characters · ${plural(state.answers.length, "saved answer")} · ${pass ? "locked with your passphrase" : "not locked"}`;
   $("#codeOut").hidden = false;
   $("#codeText").select();
 });
@@ -424,15 +457,26 @@ $("#useCode").addEventListener("click", async () => {
   // Chat apps and email can wrap long lines, so ignore any whitespace.
   const raw = $("#codeIn").value.replace(/\s+/g, "");
   try {
-    if (!raw.startsWith(CODE_PREFIX)) throw new Error("That isn’t an Apply Kit transfer code. It should start with " + CODE_PREFIX);
+    const locked = raw.startsWith(LOCKED_PREFIX);
+    if (!locked && !raw.startsWith(CODE_PREFIX)) throw new Error("That isn’t an Apply Kit transfer code. It should start with APPLYKIT1.");
+    const pass = $("#codePass").value;
+    if (locked && !pass) throw new Error("This code is locked. Enter its passphrase in the Passphrase box, then tap Import code again.");
+    let bytes;
+    try {
+      bytes = fromBase64Url(raw.slice((locked ? LOCKED_PREFIX : CODE_PREFIX).length));
+    } catch {
+      throw new Error("The code is incomplete or got changed on the way. Copy it again in full.");
+    }
+    if (locked) bytes = await unlock(bytes, pass);
     let parsed;
     try {
-      parsed = JSON.parse(new TextDecoder().decode(await gzip(fromBase64Url(raw.slice(CODE_PREFIX.length)), false)));
+      parsed = JSON.parse(new TextDecoder().decode(await gzip(bytes, false)));
     } catch {
       throw new Error("The code is incomplete or got changed on the way. Copy it again in full.");
     }
     if (await importBackup(parsed, "transfer code")) {
       $("#codeIn").value = "";
+      $("#codePass").value = "";
       setStatus("Transfer code imported");
     }
   } catch (err) {
