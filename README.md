@@ -4,7 +4,7 @@
 [![Latest release](https://img.shields.io/github/v/release/Larry8668/apply-kit)](https://github.com/Larry8668/apply-kit/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-A Firefox extension that fills job applications from a profile you keep. You see every field and value before anything is filled. It works on Firefox for desktop and Android, syncs between them through Firefox Sync, and has no server, account or tracking of its own.
+A Firefox extension that fills job applications from a profile you keep. You see every field and value before anything is filled. It works on Firefox for desktop and Android, and has no server, account or tracking of its own.
 
 It's a personal project, built for one person's job search and shared in case it's useful. It isn't on the Firefox add-ons store. Signed builds are on the [releases page](https://github.com/Larry8668/apply-kit/releases/latest).
 
@@ -45,7 +45,7 @@ Everything you enter stays in your browser. Apply Kit has no server, no analytic
 | Runs on every site | Needed to spot application forms wherever they're hosted, including company careers pages. To decide whether a page looks like an application, it checks the address and title, and on pages with an upload field, the start of the visible text. It reads form labels to match fields, and only writes into a form when you tap Fill or pick a suggestion. None of this is stored or sent anywhere. |
 | Reach one site, on request (optional) | Only if you add a resume link. Firefox asks you first, and the permission covers just that link's site. Removing the resume gives it back. |
 
-Your details only leave the browser in two ways: into the form fields you choose to fill, and through Firefox Sync, which encrypts them on your device first. The code is plain JavaScript with no build step and no third-party code inside the extension, so it's quick to check yourself, starting in [`extension/`](extension).
+Your details only leave the browser in two ways: into the form fields you choose to fill, and, on desktop, through Firefox Sync, which encrypts them on your device first. The code is plain JavaScript with no build step and no third-party code inside the extension, so it's quick to check yourself, starting in [`extension/`](extension).
 
 ## Try it without installing (temporary)
 
@@ -59,18 +59,20 @@ A temporary add-on is removed when Firefox restarts. To keep it, and to get it o
 
 ## Syncing between devices
 
-Sign in to the same Firefox account on both devices, and make sure Add-ons is checked under Settings → Sync. Changes usually arrive within a few minutes. If sync ever lags or fails, use "Export backup" on one device and "Import backup" on the other.
+**Desktop to desktop:** sign in to the same Firefox account on each computer and make sure Add-ons is checked under Settings → Sync. Changes arrive within about 10 minutes, or right away with "Sync Now".
+
+**To or from a phone:** Firefox for Android doesn't sync extension data with your Firefox account yet ([Mozilla bug 1625257](https://bugzilla.mozilla.org/show_bug.cgi?id=1625257)). Data saved on the phone stays on the phone, and desktop changes don't reach it. To copy your profile across, use "Export backup" in settings on one device, move the file to the other (email it to yourself, or use a cloud drive), and use "Import backup" there. Importing replaces everything on that device.
 
 Sync storage is about 100 KB total, with 8 KB per saved answer (roughly 7,000 characters). That's plenty for a profile and dozens of answers. Settings shows how much you're using.
 
-How it works: the profile, extra fields and saved answers live in the extension's `storage.sync` area. Each device keeps a copy inside its Firefox profile folder, so everything works offline. When Firefox Sync runs, it uploads changes to Mozilla's sync servers and pulls down changes from your other devices. The data is encrypted on your device with a key derived from your Firefox account password before it's uploaded, so Mozilla stores it but can't read it. Apply Kit has no server of its own and sends nothing anywhere itself. If you're not signed in to Firefox Sync, the data just stays on that device. One catch: if you reset a forgotten Firefox account password, synced data can be wiped. Keep an exported backup.
+How it works: the profile, extra fields and saved answers live in the extension's `storage.sync` area. Each device keeps a copy inside its Firefox profile folder, so everything works offline. On desktop, when Firefox Sync runs, it uploads changes to Mozilla's sync servers and pulls down changes from your other devices. The data is encrypted on your device with a key derived from your Firefox account password before it's uploaded, so Mozilla stores it but can't read it. Apply Kit has no server of its own and sends nothing anywhere itself. If you're not signed in to Firefox Sync, the data just stays on that device. One catch: if you reset a forgotten Firefox account password, synced data can be wiped. Keep an exported backup.
 
 ## Resume
 
-The PDF itself never goes into sync storage, because it's too big. Each device keeps its own copy in the extension's local storage. Only the file name, size, date and link (if any) sync. That lets settings on one device say "Your other device has a newer resume."
+The PDF itself never goes into sync storage, because it's too big. Each device keeps its own copy in the extension's local storage. Only the file name, size, date and link (if any) go into sync storage. Between desktop computers, that lets settings on one say "Your other device has a newer resume."
 
 - **Upload:** fully offline. Pick the PDF in settings on each device.
-- **Link:** paste a share link and tap Download. Firefox asks for permission to reach that one site (for Google Drive, that's Google's download domains), and nothing is downloaded before you agree. The link syncs, so on your other device it's one tap on "Download it here", plus that device's own permission prompt. The link must be viewable by anyone who has it. Removing the resume in settings also gives the site permission back.
+- **Link:** paste a share link and tap Download. Firefox asks for permission to reach that one site (for Google Drive, that's Google's download domains), and nothing is downloaded before you agree. Between desktop computers the link syncs, so on the other one it's a single tap on "Download it here", plus that computer's own permission prompt. On a phone, paste the link there too. The link must be viewable by anyone who has it. Removing the resume in settings also gives the site permission back.
 
 Attaching works on forms with a real upload field, which covers Greenhouse, Lever, Ashby, Workday and most others. A few drag-and-drop-only upload areas don't have one; use their own upload button for those.
 
