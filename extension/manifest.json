@@ -1,12 +1,13 @@
 {
   "manifest_version": 2,
   "name": "Apply Kit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Fills job applications from a profile you keep. Syncs through Firefox Sync.",
   "browser_specific_settings": {
     "gecko": {
       "id": "apply-kit@personal.local",
       "strict_min_version": "115.0",
+      "update_url": "https://raw.githubusercontent.com/Larry8668/apply-kit/main/updates.json",
       "data_collection_permissions": { "required": ["none"] }
     },
     "gecko_android": { "strict_min_version": "120.0" }

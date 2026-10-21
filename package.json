@@ -1,11 +1,11 @@
 {
   "name": "apply-kit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Personal Firefox extension that fills job applications from a profile you keep.",
   "license": "MIT",
   "scripts": {
-    "lint": "web-ext lint --source-dir extension",
+    "lint": "web-ext lint --self-hosted --source-dir extension",
     "start": "web-ext run --source-dir extension",
     "start:android": "web-ext run -t firefox-android --source-dir extension",
     "sign": "web-ext sign --channel=unlisted --source-dir extension"

@@ -57,3 +57,34 @@ jobs:
           else
             gh release create "$TAG" "${files[@]}" --target "$GITHUB_SHA" --title "Apply Kit $TAG" --notes "Signed unlisted build."
           fi
+
+      # Installed copies check updates.json on main (the manifest's update_url) about once
+      # a day, and install whatever version it lists, after checking the hash.
+      - name: Point auto-updates at this release
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          xpi=$(ls web-ext-artifacts/*.xpi | head -1)
+          export XPI_NAME=$(basename "$xpi") XPI_HASH=$(sha256sum "$xpi" | cut -d' ' -f1)
+          git fetch --quiet origin main
+          git checkout --quiet -B main origin/main
+          node <<'EOF'
+          const fs = require("fs");
+          const { TAG, XPI_NAME, XPI_HASH, GITHUB_REPOSITORY } = process.env;
+          const id = require("./extension/manifest.json").browser_specific_settings.gecko.id;
+          const version = TAG.replace(/^v/, "");
+          let doc = { addons: {} };
+          try { doc = JSON.parse(fs.readFileSync("updates.json", "utf8")); } catch {}
+          const entry = doc.addons[id] || (doc.addons[id] = { updates: [] });
+          entry.updates = entry.updates.filter(u => u.version !== version);
+          entry.updates.push({
+            version,
+            update_link: `https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${encodeURIComponent(XPI_NAME)}`,
+            update_hash: "sha256:" + XPI_HASH
+          });
+          fs.writeFileSync("updates.json", JSON.stringify(doc, null, 2) + "\n");
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add updates.json
+          git diff --cached --quiet || { git commit --quiet -m "Point auto-updates at $TAG"; git push --quiet origin main; }
