@@ -54,6 +54,8 @@ document.getElementById("fill").addEventListener("click", async () => {
   showReview();
 });
 
+document.getElementById("ver").textContent = "Apply Kit " + browser.runtime.getManifest().version;
+
 document.getElementById("edit").addEventListener("click", () => {
   browser.runtime.openOptionsPage();
   window.close();
