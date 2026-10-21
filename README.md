@@ -23,7 +23,8 @@ It's a personal project, built for one person's job search and shared in case it
 - **Pay details.** Current total pay, fixed, variable and stock parts, a free-text breakdown, and expected salary are separate fields, so "Current CTC" and "Expected CTC" each get the right number.
 - **Suggestions as you go.** When you tap into a field, a small box offers the matching profile value, plus up to three saved answers if the field is a longer question.
 - **Saved answers.** After writing an answer to a question like "Why do you want to work here?", tap "Save as answer". Questions with similar wording on later forms get it as a suggestion.
-- **Transfer code.** Firefox for Android can't sync extension data, so settings can turn your profile and saved answers into a one-line code to paste on your other device. See [Syncing between devices](#syncing-between-devices).
+- **Transfer code.** Firefox for Android can't sync extension data, so settings can turn your profile and saved answers into a one-line code to paste on your other device, optionally locked with a passphrase. See [Syncing between devices](#syncing-between-devices).
+- **Applications log.** Every form you fill is logged on that device with the company, role, date and link. Settings lets you correct them, track a status (Filled, Applied, Interviewing, Offer, Rejected, Withdrawn), and export the list as CSV. It can be turned off.
 - **Extra fields.** For anything the profile doesn't cover, such as EEO questions or referral codes, add a name, some label keywords, and a value in settings.
 - **Toolbar menu.** "Fill this page" works on any page, including ones not recognised as an application. It reviews every part of the page in one list, grouped by site. Forms embedded from known application platforms start ticked. Anything from an unrelated site, like an ad, is flagged "Other site" and starts unticked. "Edit profile" opens settings.
 
@@ -42,7 +43,7 @@ Everything you enter stays in your browser. Apply Kit has no server, no analytic
 
 | Access | Why |
 | --- | --- |
-| `storage` | Keeps your profile, saved answers and resume in Firefox's extension storage. |
+| `storage` | Keeps your profile, saved answers, resume and applications log in Firefox's extension storage. |
 | Runs on every site | Needed to spot application forms wherever they're hosted, including company careers pages. To decide whether a page looks like an application, it checks the address and title, and on pages with an upload field, the start of the visible text. It reads form labels to match fields, and only writes into a form when you tap Fill or pick a suggestion. None of this is stored or sent anywhere. |
 | Reach one site, on request (optional) | Only if you add a resume link. Firefox asks you first, and the permission covers just that link's site. Removing the resume gives it back. |
 
@@ -62,7 +63,7 @@ A temporary add-on is removed when Firefox restarts. To keep it, and to get it o
 
 **Desktop to desktop:** sign in to the same Firefox account on each computer and make sure Add-ons is checked under Settings → Sync. Changes arrive within about 10 minutes, or right away with "Sync Now".
 
-**To or from a phone:** Firefox for Android doesn't sync extension data with your Firefox account yet ([Mozilla bug 1625257](https://bugzilla.mozilla.org/show_bug.cgi?id=1625257)). Data saved on the phone stays on the phone, and desktop changes don't reach it. To copy your profile across, use a transfer code: in settings on one device, tap "Create transfer code" and "Copy code", send it to yourself (a notes app, email, or a chat with yourself), then paste it under "Paste a code from your other device" on the other and tap "Import code". The code holds your profile, extra fields and saved answers (not the resume), compressed into one line of text. It isn't encrypted, so don't send it anywhere other people can read. "Export backup" and "Import backup" do the same with a file. Importing either one replaces everything on that device.
+**To or from a phone:** Firefox for Android doesn't sync extension data with your Firefox account yet ([Mozilla bug 1625257](https://bugzilla.mozilla.org/show_bug.cgi?id=1625257)). Data saved on the phone stays on the phone, and desktop changes don't reach it. To copy your profile across, use a transfer code: in settings on one device, tap "Create transfer code" and "Copy code", send it to yourself (a notes app, email, or a chat with yourself), then paste it under "Paste a code from your other device" on the other and tap "Import code". The code holds your profile, extra fields and saved answers (not the resume), compressed into one line of text. Set a passphrase to lock it (AES-256-GCM, with the key derived from your passphrase); you'll need the same passphrase on the other device. Without one, the code isn't encrypted, so don't send it anywhere other people can read. "Export backup" and "Import backup" do the same with a file. Importing either one replaces everything on that device.
 
 Sync storage is about 100 KB total, with 8 KB per saved answer (roughly 7,000 characters). That's plenty for a profile and dozens of answers. Settings shows how much you're using.
 
@@ -82,6 +83,7 @@ Attaching works on forms with a real upload field, which covers Greenhouse, Leve
 The manifest's `update_url` points at [`updates.json`](updates.json) on `main`. Firefox checks it about once a day and installs any newer signed version listed there. The download is only accepted if its SHA-256 hash matches the one in `updates.json`. The "Sign and release" workflow adds each new release to that file automatically.
 
 - **Desktop:** to check right away, open `about:addons`, click the gear icon, and choose "Check for Updates".
+- **Which version am I on?** The toolbar menu shows it at the bottom, and settings has an Updates section with a "Check for updates" button that says whether a newer version is out. Firefox doesn't let an extension install updates itself, so that button only tells you.
 - **Android:** Firefox for Android checks for add-on updates in the background on its own schedule.
 
 Auto-updates start from version 0.3.0. Older versions don't have `update_url`, so 0.3.0 has to be installed by hand once.
@@ -116,6 +118,7 @@ The extension lives in `extension/`. The repo root holds tooling only.
 | `docs/screenshots/` | Images used in this README. |
 | `package.json` | Dev scripts (see below). |
 | `.github/workflows/` | Lint on every push and PR; sign and release on demand. |
+| `.github/dependabot.yml` | Weekly update checks for `web-ext` and the GitHub Actions used in CI. |
 
 ## Development
 
