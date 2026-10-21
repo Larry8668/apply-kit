@@ -180,7 +180,9 @@
         const accept = (el.getAttribute("accept") || "").toLowerCase();
         if (!RESUME.test(hints) || /\bcover\b/u.test(hints)) continue;
         if (accept && !/pdf|application\/\*|\*\/\*/.test(accept)) continue;
-        out.push({ id: idOf(el), kind: "file", el, field: "Resume", label, value: r.name,
+        // Upload fields often have two labels, the heading and the "Attach" button; show the heading.
+        const asks = el.labels && el.labels.length > 1 ? textOf(el.labels[0]) : label;
+        out.push({ id: idOf(el), kind: "file", el, field: "Resume", label: asks, value: r.name,
           shown: `${r.name} · ${Math.max(1, Math.round(r.size / 1024))} KB`, hidden: !fileSeen(el) });
         continue;
       }
