@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Apply Kit",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Fills job applications from a profile you keep. Syncs through Firefox Sync.",
   "browser_specific_settings": {
     "gecko": {
