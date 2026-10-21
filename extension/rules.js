@@ -2,7 +2,7 @@
 // Each field: how it's shown in settings, and how it's recognised on forms.
 // p = matching priority (lower wins) so specific phrases beat generic ones.
 
-var NOT_PERSON = /\b(company|employer|school|university|college|reference|referee|manager|emergency|recruiter|referr\w*|file|user|business|project|organi[sz]ation)\b/u;
+var NOT_PERSON = /\b(company|employer|school|university|college|reference|referee|manager|emergency|recruiter|referr\w*|file|user|business|project|organi[sz]ation|pronounc\w*|pronunciation)\b/u;
 var NOT_CONTACT = /\b(reference|referee|manager|emergency|recruiter)\b/u;
 var NOT_PHONE = /\b(reference|referee|manager|emergency|recruiter|ext|extension|code|isd)\b/u;
 // Current pay vs. what you're asking for. "Current CTC" must never get the expected figure.

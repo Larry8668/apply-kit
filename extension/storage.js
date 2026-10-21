@@ -91,7 +91,7 @@ var AK = (() => {
 
   // Records a fill. Filling the same job again (another step of a multi-page form, or
   // coming back later) updates its entry instead of adding a second one.
-  async function logApplication({ url, host, company, role, fields }) {
+  async function logApplication({ url, host, company, role, fields, fieldNames = [] }) {
     if (!(await appsEnabled())) return;
     const apps = await loadApps();
     const now = Date.now();
@@ -100,10 +100,11 @@ var AK = (() => {
     if (hit) {
       hit.last = now;
       hit.fields += fields;
+      hit.fieldNames = [...new Set([...(hit.fieldNames || []), ...fieldNames])];
       apps.splice(apps.indexOf(hit), 1);
       apps.unshift(hit);
     } else {
-      apps.unshift({ id: newId(), url, host, company, role, t: now, last: now, fields, status: "Filled" });
+      apps.unshift({ id: newId(), url, host, company, role, t: now, last: now, fields, fieldNames: [...new Set(fieldNames)], status: "Filled", notes: "" });
     }
     await saveApps(apps);
   }

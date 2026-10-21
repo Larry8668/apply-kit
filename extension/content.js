@@ -18,7 +18,7 @@
   }
 
   // ---------- Reading the page ----------
-  const clean = s => (s || "").replace(/\*/g, "").replace(/\(?\brequired\b\)?/gi, "").replace(/\s+/g, " ").trim();
+  const clean = s => (s || "").replace(/[*✱]/g, "").replace(/\(?\brequired\b\)?/gi, "").replace(/\s+/g, " ").trim();
   const textOf = n => (n ? clean(n.innerText || n.textContent) : "");
   const controlsIn = n => n.querySelectorAll("input:not([type=hidden]), textarea, select").length;
   const byIds = ids => clean((ids || "").split(/\s+/).map(id => textOf(document.getElementById(id))).join(" "));
@@ -111,14 +111,20 @@
   }
 
   // Picks the option whose text best matches the value ("No" → "No, I will not require…").
-  function pickOption(options, value) {
+  // `near` are extra words that break ties, like your state and country when several
+  // places are called "San Francisco".
+  function pickOption(options, value, near = []) {
     const v = normalize(value);
     if (!v) return null;
     const norm = options.map(o => ({ o, l: normalize(o.label) })).filter(x => x.l);
     const firstWord = s => s.split(" ")[0];
     const hit = norm.find(x => x.l === v)
       || (!v.includes(" ") && norm.find(x => firstWord(x.l) === v))
-      || norm.find(x => x.l.startsWith(v + " ") || v.startsWith(x.l + " "))
+      // Most context words, then shortest: "United States" picks "United States +1", not
+      // "…Minor Outlying Islands", and "San Francisco" picks the one in California.
+      || norm.filter(x => x.l.startsWith(v + " ") || v.startsWith(x.l + " "))
+        .map(x => ({ ...x, score: near.map(normalize).filter(w => w && x.l.includes(w)).length }))
+        .sort((a, b) => b.score - a.score || a.l.length - b.l.length)[0]
       || (/^\d+$/.test(v) && norm.find(x => x.l.split(" ").includes(v))) // "+91" → "India (+91)"
       || (v.length > 3 && norm.find(x => x.l.includes(v)));
     return hit ? hit.o : null;
@@ -150,8 +156,9 @@
   }
   // Styled radio buttons often hide the real input and show only the label.
   const radioSeen = r => [r, ...(r.labels || [])].some(n => visible(n) && !concealed(n));
-  // Upload fields are almost always a hidden input behind a visible button or drop area.
-  function fileSeen(el) {
+  // Upload fields are almost always a hidden input behind a visible button or drop area,
+  // and searchable dropdowns hide their input inside a styled box.
+  function shownNearby(el) {
     if (radioSeen(el)) return true;
     let n = el.parentElement;
     for (let i = 0; i < 3 && n && n !== document.body; i++, n = n.parentElement) {
@@ -160,6 +167,21 @@
     return false;
   }
   const RESUME = /(^| )(resume|résumé|cv|curriculum vitae)( |$)/u;
+
+  // Upload buttons are often labelled just "Attach"; the field's real name is on its group.
+  function groupLabel(el) {
+    const g = el.closest('[role="group"][aria-labelledby], fieldset');
+    return g ? byIds(g.getAttribute("aria-labelledby")) || textOf(g.querySelector("legend")) : "";
+  }
+
+  // Searchable dropdowns (react-select on Greenhouse, and other ARIA comboboxes) look like a
+  // text box but only accept a value picked from their list.
+  const isCombo = el => el.tagName === "INPUT" &&
+    (el.getAttribute("role") === "combobox" || /^(list|both)$/.test(el.getAttribute("aria-autocomplete") || ""));
+  // A "strict" one throws away typed text that isn't an option; others are text boxes with suggestions.
+  const strictCombo = el => /select/i.test(el.className) || !!el.closest('[class*="select__"], [class*="Select"]');
+  const comboBox = el => el.closest('[class*="control"]') || (el.parentElement && el.parentElement.parentElement) || el;
+  const comboHasValue = el => !!comboBox(el).querySelector('[class*="single-value"], [class*="singleValue"], [class*="multi-value"], [class*="multiValue"]');
 
   // Stable ids, so the review panel and toolbar menu can say which fields to fill.
   const ids = new WeakMap();
@@ -175,15 +197,15 @@
       if (el.tagName === "INPUT" && (el.type || "").toLowerCase() === "file") {
         const r = data.resumeHere;
         if (!r || el.files.length) continue;
-        const label = labelFor(el);
+        const label = groupLabel(el) || labelFor(el);
         const hints = hintsFor(el, label).join(" ");
         const accept = (el.getAttribute("accept") || "").toLowerCase();
         if (!RESUME.test(hints) || /\bcover\b/u.test(hints)) continue;
         if (accept && !/pdf|application\/\*|\*\/\*/.test(accept)) continue;
         // Upload fields often have two labels, the heading and the "Attach" button; show the heading.
-        const asks = el.labels && el.labels.length > 1 ? textOf(el.labels[0]) : label;
+        const asks = !groupLabel(el) && el.labels && el.labels.length > 1 ? textOf(el.labels[0]) : label;
         out.push({ id: idOf(el), kind: "file", el, field: "Resume", label: asks, value: r.name,
-          shown: `${r.name} · ${Math.max(1, Math.round(r.size / 1024))} KB`, hidden: !fileSeen(el) });
+          shown: `${r.name} · ${Math.max(1, Math.round(r.size / 1024))} KB`, hidden: !shownNearby(el) });
         continue;
       }
       if (el.tagName === "INPUT" && (el.type || "").toLowerCase() === "radio") {
@@ -201,7 +223,10 @@
       // A <label> wrapped around a <select> also contains every option's text; drop it for display.
       const asks = el.tagName === "SELECT" ? clean([...el.options].reduce((t, o) => t.replace(clean(o.text), ""), label)) : label;
       const base = { id: idOf(el), el, field: m.name, label: asks, hidden: concealed(el) };
-      if (el.tagName === "SELECT") {
+      if (isCombo(el)) {
+        if (comboHasValue(el) || el.value.trim()) continue;
+        out.push({ ...base, kind: "combo", value, shown: value, hidden: !shownNearby(el) });
+      } else if (el.tagName === "SELECT") {
         if (el.selectedIndex > 0 && el.value) continue;
         const option = pickOption([...el.options].map(o => ({ label: o.text, o })), value);
         if (option) out.push({ ...base, kind: "select", value: option.o.value, shown: option.o.text });
@@ -252,6 +277,108 @@
     el.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  async function waitFor(test, ms) {
+    for (let t = 0; t <= ms; t += 100) {
+      const v = test();
+      if (v) return v;
+      await sleep(100);
+    }
+    return null;
+  }
+
+  // Some sites (Greenhouse's newer forms) keep react-select's open state in their own code and
+  // ignore scripted typing and clicks. React stores each element's component props on the
+  // element, so find the nearest component with an option list and an onChange and choose
+  // the matching option through it: the same call a click on that option would make. It can
+  // only pick options the page itself offers. In Firefox, page properties are reached through
+  // wrappedJSObject, and objects handed to page code are cloned into the page with cloneInto.
+  const nearWords = () => [data.profile.state, data.profile.country].filter(Boolean);
+
+  // The react-select component an input belongs to, found through React's props on the element.
+  function reactSelectProps(el) {
+    const node = el.wrappedJSObject || el;
+    const key = Object.keys(node).find(k => k.startsWith("__reactFiber"));
+    for (let f = key && node[key], i = 0; f && i < 30; f = f.return, i++) {
+      const props = f.memoizedProps;
+      // The select component itself: it has a menu, not just a text input's change handler.
+      if (typeof f.type === "string" || !props || typeof props.onChange !== "function" || typeof props.onMenuOpen !== "function") continue;
+      if (Array.isArray(props.options) || typeof props.loadOptions === "function") return props;
+    }
+    return null;
+  }
+  const toPage = obj => (typeof cloneInto === "function" ? cloneInto(obj, window) : obj);
+
+  async function selectViaReact(el, value) {
+    const props = reactSelectProps(el);
+    if (!props) return false;
+    let options = Array.isArray(props.options) ? [...props.options] : [];
+    if (!options.length && typeof props.loadOptions === "function") {
+      // Options that come from a search as you type, like a city lookup.
+      try {
+        options = await new Promise((resolve, reject) => {
+          const callback = typeof exportFunction === "function" ? exportFunction(list => resolve(list || []), window) : list => resolve(list || []);
+          const result = props.loadOptions(value, callback);
+          if (result && typeof result.then === "function") result.then(list => resolve(list || []), reject);
+          setTimeout(() => resolve([]), 6000);
+        });
+        options = [...options];
+      } catch {
+        options = [];
+      }
+    }
+    const flat = options.flatMap(o => (o && Array.isArray(o.options) ? [...o.options] : [o]));
+    const hit = pickOption(flat.map(o => ({ label: String(o && o.label != null ? o.label : ""), o })), value, nearWords());
+    if (!hit) return false;
+    props.onChange(hit.o, toPage({ action: "select-option", option: hit.o, name: props.name }));
+    return true;
+  }
+
+  // Types the value into a searchable dropdown, waits for its list to settle, clicks the
+  // matching option, and checks it took. Returns false if nothing matched.
+  async function chooseOption(el, value) {
+    // These widgets re-render as you use them, so always look the input up again by id.
+    const live = () => (el.id && document.getElementById(el.id)) || el;
+    el.focus();
+    setValue(el, value);
+    const listbox = () => {
+      const id = live().getAttribute("aria-controls") || live().getAttribute("aria-owns");
+      const lb = id && document.getElementById(id);
+      return lb && lb.querySelector('[role="option"]') ? lb : null;
+    };
+    let lb = await waitFor(listbox, 2000);
+    if (!lb) {
+      // The list didn't open for scripted typing; choose through the component instead.
+      setValue(live(), "");
+      if (await selectViaReact(live(), value)) {
+        const ok = await waitFor(() => comboHasValue(live()), 1500);
+        live().blur();
+        return !!ok;
+      }
+      live().blur();
+      return false;
+    }
+    // Options can arrive in batches (place search, remote lists); wait until they stop changing.
+    for (let i = 0, last = ""; lb && i < 10 && lb.textContent !== last; i++) {
+      last = lb.textContent;
+      await sleep(250);
+      lb = listbox() || lb;
+    }
+    const options = lb ? [...lb.querySelectorAll('[role="option"]')].filter(o => o.getAttribute("aria-disabled") !== "true") : [];
+    const hit = pickOption(options.map(o => ({ label: o.textContent, o })), value, nearWords());
+    if (!hit) {
+      if (!strictCombo(el)) return true; // a text box with suggestions keeps what was typed
+      setValue(live(), "");
+      live().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
+      live().blur();
+      return false;
+    }
+    for (const type of ["mousedown", "mouseup", "click"]) hit.o.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
+    const ok = await waitFor(() => comboHasValue(live()) || (live().value && normalize(live().value) === normalize(hit.o.textContent)), 1500);
+    live().blur();
+    return !!ok;
+  }
+
   // Fills the fields with these ids. Scanning again first means anything you've typed into
   // since the review, or that the page removed, is left alone.
   async function fillIds(wanted) {
@@ -263,13 +390,21 @@
       console.warn("[Apply Kit]", e);
     }
     filling = true;
-    const done = [];
+    const done = [], missed = [];
     for (const it of scan()) {
       if (!want.has(it.id)) continue;
       const prev = it.el.value;
       if (it.kind === "file") {
-        if (!resume) continue;
+        if (!resume) { missed.push(it); continue; }
         attachFile(it.el, resume);
+      } else if (it.kind === "combo") {
+        let ok = false;
+        try {
+          ok = await chooseOption(it.el, it.value);
+        } catch (e) {
+          console.warn("[Apply Kit]", e);
+        }
+        if (!ok) { missed.push(it); continue; }
       } else if (it.kind === "radio") it.el.click();
       else setValue(it.el, it.value);
       it.el.dispatchEvent(new Event("blur"));
@@ -280,8 +415,11 @@
     hideChip();
     lastFill = done;
     refreshFab();
-    if (done.length) AK.logApplication({ ...describeApplication(), fields: done.length }).catch(e => console.warn("[Apply Kit]", e));
-    return done;
+    if (done.length) {
+      AK.logApplication({ ...describeApplication(), fields: done.length, fieldNames: done.map(it => it.field) })
+        .catch(e => console.warn("[Apply Kit]", e));
+    }
+    return { done, missed };
   }
 
   // Puts back what was there before the latest fill, skipping fields you've changed since.
@@ -289,12 +427,22 @@
     filling = true;
     let n = 0;
     for (const it of lastFill) {
-      if (!it.el.isConnected) continue;
+      if (!it.el.isConnected && it.kind !== "combo") continue;
       if (it.kind === "radio") {
         if (!it.el.checked) continue;
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked").set.call(it.el, false);
         it.el.dispatchEvent(new Event("input", { bubbles: true }));
         it.el.dispatchEvent(new Event("change", { bubbles: true }));
+      } else if (it.kind === "combo") {
+        // Backspace in an empty searchable dropdown clears its choice.
+        const input = (it.el.id && document.getElementById(it.el.id)) || it.el;
+        if (!comboHasValue(input)) continue;
+        input.focus();
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", code: "Backspace", bubbles: true, cancelable: true }));
+        input.blur();
+        const again = (it.el.id && document.getElementById(it.el.id)) || input;
+        const props = comboHasValue(again) && reactSelectProps(again);
+        if (props) props.onChange(null, toPage({ action: "clear", name: props.name }));
       } else if (it.kind === "file") {
         if (!it.el.files.length || it.el.files[0].name !== it.value) continue;
         it.el.value = "";
@@ -477,6 +625,8 @@
     .loc:hover { background: #E6EAEE; color: #17212B; }
     .tick { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: #FFF1C2; color: #6B4E00; flex: none; margin-top: 1px; }
     .tick svg { width: 12px; height: 12px; stroke-width: 2.6; }
+    .tick.miss { background: #FDE4E1; color: #A1271A; }
+    .tick.miss svg { stroke-width: 2.2; }
     .done .pick { cursor: default; }
     .bar { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid #E6EAEE; flex: none; }
     .btn { flex: 1; min-height: 44px; border-radius: 999px; border: 1px solid #D5DBE1; background: none; color: #17212B;
@@ -498,6 +648,7 @@
       .box { border-color: #6B7884; }
       [aria-checked="true"] .box { background: #F2B705; border-color: #F2B705; color: #17212B; }
       .tick { background: #3A2F0F; color: #F2B705; }
+      .tick.miss { background: #3B1A17; color: #F7A196; }
       .btn { color: #E6EBEF; border-color: #3A4652; }
       .btn.main { background: #F2B705; border-color: #F2B705; color: #17212B; }
       .chip { background: #1A2128; color: #E6EBEF; border-color: #3A4652; }
@@ -656,7 +807,7 @@
       pick.setAttribute("aria-checked", String(picked.has(it.id)));
       pick.append(make("span", "box", icon(PATH.check)), text);
     } else {
-      pick.append(make("span", "tick", icon(PATH.check)), text);
+      pick.append(it.missed ? make("span", "tick miss", icon(PATH.warn)) : make("span", "tick", icon(PATH.check)), text);
     }
     const loc = button("loc", "", () => locate(it));
     loc.setAttribute("aria-label", "Show " + it.field + " on the page");
@@ -686,7 +837,11 @@
     const picked = new Set(items.filter(it => !it.hidden && !info.foreign).map(it => it.id));
     const seen = items.filter(it => !it.hidden), unseen = items.filter(it => it.hidden);
 
-    const fill = button("btn main", "", async () => showDone(await fillIds([...picked])));
+    const fill = button("btn main", "", async () => {
+      fill.disabled = true;
+      fill.textContent = "Filling…";
+      showDone(await fillIds([...picked]));
+    });
     const update = () => {
       fill.textContent = picked.size ? "Fill " + plural(picked.size, "field") : "Nothing selected";
       fill.disabled = !picked.size;
@@ -708,16 +863,20 @@
       make("div", "bar", button("btn", "Cancel", closePanel), fill));
   }
 
-  function showDone(done) {
-    if (!done.length) { closePanel(); toast("Those fields changed, so nothing was filled."); return; }
+  function showDone({ done, missed }) {
+    if (!done.length && !missed.length) { closePanel(); toast("Those fields changed, so nothing was filled."); return; }
     const undo = button("btn", "Undo", () => {
       const n = undoLast();
       closePanel();
       toast(n ? "Undid " + plural(n, "field") + "." : "Nothing to undo. You’ve changed those fields since.");
     });
     showPanel(
-      head("Filled " + plural(done.length, "field"), "Check them before you submit. Nothing was submitted.", true),
-      make("div", "list done", ...done.map(it => fieldRow(it, null))),
+      head("Filled " + plural(done.length, "field"), (missed.length ? plural(missed.length, "field") + " need you. " : "") + "Check them before you submit. Nothing was submitted.", true),
+      make("div", "list done",
+        ...done.map(it => fieldRow(it, null)),
+        missed.length ? make("div", "sec", icon(PATH.warn), "Fill these by hand") : null,
+        missed.length ? make("p", "note", "Apply Kit couldn’t find a matching option for these. Tap the target to jump to each one.") : null,
+        ...missed.map(it => fieldRow({ ...it, missed: true }, null))),
       make("div", "bar", undo, button("btn main", "Done", closePanel)));
   }
 
@@ -788,7 +947,7 @@
       refreshFab();
       return Promise.resolve(true);
     }
-    if (msg.cmd === "fill") return fillIds(msg.ids || []).then(done => done.map(brief));
+    if (msg.cmd === "fill") return fillIds(msg.ids || []).then(r => ({ done: r.done.map(brief), missed: r.missed.map(brief) }));
     if (msg.cmd === "undo") return Promise.resolve(undoLast());
     if (msg.cmd === "locate") {
       const it = scan().find(x => x.id === msg.id);

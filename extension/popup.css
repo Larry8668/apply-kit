@@ -2,6 +2,7 @@
   --bg: #fff; --ink: #17212B; --muted: #5B6875; --soft: #3B4752; --line: #E6EAEE; --edge: #D5DBE1;
   --hover: #F3F5F7; --mark: #F2B705; --warn-ink: #8A6300; --note-bg: #FFF6DB; --note-ink: #5E4300;
   --tick-bg: #FFF1C2; --tick-ink: #6B4E00; --box: #9AA6B2; --on: #17212B; --on-ink: #fff;
+  --miss-bg: #FDE4E1; --miss-ink: #A1271A;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -9,6 +10,7 @@
     --bg: #1A2128; --ink: #E6EBEF; --muted: #9AA6B2; --soft: #C9D2DA; --line: #2C3640; --edge: #3A4652;
     --hover: #232C35; --warn-ink: #F2B705; --note-bg: #3A2F0F; --note-ink: #F6E3A8;
     --tick-bg: #3A2F0F; --tick-ink: #F2B705; --box: #6B7884; --on: #F2B705; --on-ink: #17212B;
+    --miss-bg: #3B1A17; --miss-ink: #F7A196;
     color-scheme: dark;
   }
 }
@@ -20,6 +22,8 @@ svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; s
 
 .start { padding: 14px; }
 .start .btn { display: block; width: 100%; margin-bottom: 8px; }
+.start .pair { display: flex; gap: 8px; }
+.start .pair .btn { flex: 1; padding: 0 10px; font-size: 14px; }
 .msg { margin: 6px 2px 0; color: var(--muted); font-size: 13px; }
 .msg:empty { display: none; }
 .ver { margin: 10px 2px 0; color: var(--muted); font-size: 12px; text-align: center; }
@@ -50,6 +54,7 @@ svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; s
 .box svg, .tick svg { width: 13px; height: 13px; stroke-width: 2.6; }
 [aria-checked="true"] .box { background: var(--on); border-color: var(--on); color: var(--on-ink); }
 .flag .box { border-color: #C99A00; }
+.tick.miss { background: var(--miss-bg); color: var(--miss-ink); }
 .tick { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: var(--tick-bg); color: var(--tick-ink); flex: none; margin-top: 1px; }
 .text { min-width: 0; display: grid; gap: 1px; }
 .name { font-weight: 600; font-size: 13.5px; }

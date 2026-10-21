@@ -61,6 +61,11 @@ document.getElementById("edit").addEventListener("click", () => {
   window.close();
 });
 
+document.getElementById("apps").addEventListener("click", async () => {
+  await browser.tabs.create({ url: browser.runtime.getURL("options.html#applications") });
+  window.close();
+});
+
 function fieldRow(frameId, it, picked, onToggle) {
   const key = frameId + ":" + it.id;
   const pick = button("pick", "", () => {
@@ -76,7 +81,7 @@ function fieldRow(frameId, it, picked, onToggle) {
     pick.setAttribute("aria-checked", String(picked.has(key)));
     pick.append(make("span", "box", icon(PATH.check)), text);
   } else {
-    pick.append(make("span", "tick", icon(PATH.check)), text);
+    pick.append(it.missed ? make("span", "tick miss", icon(PATH.warn)) : make("span", "tick", icon(PATH.check)), text);
   }
   const loc = button("loc", "", () => browser.tabs.sendMessage(tab.id, { cmd: "locate", id: it.id }, { frameId }).catch(() => {}));
   loc.setAttribute("aria-label", "Show " + it.field + " on the page");
@@ -147,16 +152,17 @@ async function doFill(picked) {
     if (!byFrame.has(frameId)) byFrame.set(frameId, []);
     byFrame.get(frameId).push(id);
   }
-  const done = [];
+  const done = [], missed = [];
   for (const [frameId, ids] of byFrame) {
     try {
-      const filled = await browser.tabs.sendMessage(tab.id, { cmd: "fill", ids }, { frameId });
-      for (const it of filled || []) done.push([frameId, it]);
+      const result = await browser.tabs.sendMessage(tab.id, { cmd: "fill", ids }, { frameId });
+      for (const it of (result && result.done) || []) done.push([frameId, it]);
+      for (const it of (result && result.missed) || []) missed.push([frameId, it]);
     } catch {
       // That frame went away (navigated or closed) since the review.
     }
   }
-  if (!done.length) {
+  if (!done.length && !missed.length) {
     view.replaceChildren(head("Nothing was filled", "Those fields changed since the review. Try again."),
       make("div", "bar", button("btn main", "Close", () => window.close())));
     return;
@@ -170,8 +176,14 @@ async function doFill(picked) {
     view.replaceChildren(head(n ? "Undid " + plural(n, "field") : "Nothing to undo", n ? "Those fields are empty again." : "You’ve changed those fields since."),
       make("div", "bar", button("btn main", "Close", () => window.close())));
   });
+  const list = make("div", "list done", ...done.map(([frameId, it]) => fieldRow(frameId, it, null)));
+  if (missed.length) {
+    list.append(make("div", "sec", icon(PATH.warn), "Fill these by hand"),
+      make("p", "note", "Apply Kit couldn’t find a matching option for these. Tap the target to jump to each one."),
+      ...missed.map(([frameId, it]) => fieldRow(frameId, { ...it, missed: true }, null)));
+  }
   view.replaceChildren(
-    head("Filled " + plural(done.length, "field"), "Check them before you submit. Nothing was submitted.", true),
-    make("div", "list done", ...done.map(([frameId, it]) => fieldRow(frameId, it, null))),
+    head("Filled " + plural(done.length, "field"), (missed.length ? plural(missed.length, "field") + " need you. " : "") + "Check them before you submit. Nothing was submitted.", true),
+    list,
     make("div", "bar", undo, button("btn main", "Done", () => window.close())));
 }
