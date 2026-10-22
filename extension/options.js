@@ -1,6 +1,6 @@
 const $ = s => document.querySelector(s);
 const statusEl = $("#status");
-let state = { profile: {}, custom: [], answers: [] };
+let state = { profile: {}, custom: [], work: [], edu: [], answers: [] };
 let apps = [];
 let appsOn = true;
 
@@ -93,6 +93,92 @@ function renderCustom() {
         }, "Remove"))
     ));
   }
+}
+
+// ---------- Work history and education ----------
+// Dates are stored as "2021-05" (or just "2021"), entered as a month menu and a year box.
+function monthYear(label, value, onChange, disabled) {
+  const [y = "", m = ""] = String(value || "").split("-");
+  const month = h("select", { "aria-label": label + " month", disabled },
+    h("option", { value: "" }, "Month"), ...MONTHS.map((name, i) => h("option", { value: String(i + 1).padStart(2, "0"), selected: m === String(i + 1).padStart(2, "0") }, name.slice(0, 3))));
+  const year = h("input", { type: "text", inputmode: "numeric", maxlength: "4", placeholder: "Year", value: y, "aria-label": label + " year", disabled });
+  const emit = () => {
+    const yy = year.value.trim();
+    onChange(/^\d{4}$/.test(yy) ? (month.value ? `${yy}-${month.value}` : yy) : "");
+  };
+  month.addEventListener("change", emit);
+  year.addEventListener("input", emit);
+  return h("div", { class: "field" }, h("span", { class: "flabel" }, label), h("div", { class: "monthyear" }, month, year));
+}
+
+const HISTORY = {
+  work: {
+    list: () => state.work, set: v => { state.work = v; }, save: () => AK.saveWork(state.work), box: "#workList", noun: "job",
+    title: (e, i) => `Job ${i + 1}${e.company ? " · " + e.company : ""}`,
+    empty: "No jobs yet. Add your current or most recent one first.",
+    fields: [["company", "Company", "e.g. Example Labs"], ["title", "Job title", "e.g. Senior Software Engineer"], ["location", "Location", "e.g. Bengaluru, India"]],
+    current: "I currently work here", start: "Start", end: "End", description: true
+  },
+  edu: {
+    list: () => state.edu, set: v => { state.edu = v; }, save: () => AK.saveEdu(state.edu), box: "#eduList", noun: "school",
+    title: (e, i) => `Education ${i + 1}${e.school ? " · " + e.school : ""}`,
+    empty: "No education yet. Add your highest or most relevant first.",
+    fields: [["school", "School or university", "e.g. University of Example"], ["degree", "Degree", "e.g. Bachelor of Technology"], ["major", "Field of study", "e.g. Computer Science"],
+      ["gpa", "Grade / GPA", "e.g. 8.6/10"], ["city", "City", ""], ["state", "State / province", ""], ["country", "Country", ""]],
+    current: "I’m still studying here", start: "Start", end: "End or expected graduation", description: false
+  }
+};
+
+function renderHistory(kind) {
+  const H = HISTORY[kind];
+  const box = $(H.box);
+  box.replaceChildren();
+  const list = H.list();
+  if (!list.length) box.append(h("p", { class: "empty" }, H.empty));
+  list.forEach((e, i) => {
+    const save = () => later(kind, H.save);
+    const set = k => ev => { e[k] = ev.target.value; save(); };
+    const move = d => () => {
+      const next = list.slice();
+      [next[i], next[i + d]] = [next[i + d], next[i]];
+      H.set(next);
+      renderHistory(kind);
+      run(H.save);
+    };
+    const endBox = monthYear(H.end, e.end, v => { e.end = v; save(); }, e.current);
+    const head = h("div", { class: "entryhead" },
+      h("strong", {}, H.title(e, i)),
+      h("div", { class: "entryacts" },
+        h("button", { type: "button", class: "text", disabled: i === 0, "aria-label": "Move up", title: "Move up", onclick: move(-1) }, "↑"),
+        h("button", { type: "button", class: "text", disabled: i === list.length - 1, "aria-label": "Move down", title: "Move down", onclick: move(1) }, "↓"),
+        h("button", { type: "button", class: "text danger", onclick: () => {
+          H.set(list.filter(x => x !== e));
+          renderHistory(kind);
+          run(H.save);
+        } }, "Remove")));
+    const current = h("label", { class: "check inline" },
+      h("input", { type: "checkbox", checked: !!e.current, onchange: ev => {
+        e.current = ev.target.checked;
+        for (const c of endBox.querySelectorAll("select, input")) c.disabled = e.current;
+        save();
+      } }), H.current);
+    box.append(h("div", { class: "item entry" },
+      head,
+      h("div", { class: "grid" }, ...H.fields.map(([k, label, ph]) => field(label, h("input", { value: e[k] || "", placeholder: ph, oninput: set(k) })))),
+      h("div", { class: "grid dates" }, monthYear(H.start, e.start, v => { e.start = v; save(); }), endBox),
+      current,
+      H.description ? field("Description (optional)", h("textarea", { rows: 3, value: e.description || "", placeholder: "What you did there, for forms that ask", oninput: set("description") })) : null));
+  });
+}
+
+for (const kind of ["work", "edu"]) {
+  $(kind === "work" ? "#addWork" : "#addEdu").addEventListener("click", () => {
+    const H = HISTORY[kind];
+    H.set([...H.list(), { id: AK.newId() }]);
+    renderHistory(kind);
+    const inputs = $(H.box).querySelectorAll(".entry:last-child input");
+    if (inputs[0]) inputs[0].focus();
+  });
 }
 
 function renderAnswers() {
@@ -256,6 +342,8 @@ async function loadAndRender() {
   state = await AK.load();
   renderProfile();
   renderCustom();
+  renderHistory("work");
+  renderHistory("edu");
   renderAnswers();
   renderResume();
   await loadApps();
@@ -280,7 +368,7 @@ $("#ansSearch").addEventListener("input", renderAnswers);
 
 // What a backup file or transfer code holds. The resume isn't included: it's too big
 // for a code, and each device keeps its own copy.
-const backupData = () => ({ version: 1, profile: state.profile, custom: state.custom, answers: state.answers });
+const backupData = () => ({ version: 1, profile: state.profile, custom: state.custom, work: state.work, edu: state.edu, answers: state.answers });
 
 async function importBackup(parsed, what) {
   if (!parsed || typeof parsed.profile !== "object") throw new Error(`That ${what} isn’t from Apply Kit.`);

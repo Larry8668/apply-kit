@@ -162,6 +162,17 @@ button:focus-visible, .button:focus-within { outline: 3px solid var(--mark); out
 #ansList .item:last-child { padding-bottom: 0; }
 #ansList .empty { margin: 0; }
 .itemfoot { display: flex; justify-content: space-between; align-items: center; }
+.entryhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.entryhead strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.entryacts { display: flex; align-items: center; gap: 2px; flex: none; }
+.entryacts .text { min-width: 32px; font-size: 1rem; }
+.entryacts .text:disabled { opacity: .3; cursor: default; }
+.flabel { display: block; font-size: 0.875rem; color: var(--muted); margin-bottom: 4px; }
+.monthyear { display: grid; grid-template-columns: minmax(0, 1fr) 96px; gap: 8px; }
+.monthyear select { width: 100%; }
+select:disabled, input:disabled { opacity: .5; }
+.check.inline { margin: 0; }
+#workList, #eduList { margin-bottom: 12px; }
 
 /* ---------- Resume ---------- */
 .doccard { display: flex; align-items: center; gap: 14px; padding: 14px 16px; margin-bottom: 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; }
