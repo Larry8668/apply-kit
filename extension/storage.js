@@ -12,11 +12,15 @@ var AK = (() => {
       .map(k => ({ id: k.slice(4), q: all[k].q || "", a: all[k].a || "", t: all[k].t || 0 }))
       .sort((x, y) => y.t - x.t);
     const { resumeInfo } = await local.get("resumeInfo");
-    return { profile: all.profile || {}, custom: all.custom || [], answers, resume: all.resume || null, resumeHere: resumeInfo || null };
+    return { profile: all.profile || {}, custom: all.custom || [], work: all.work || [], edu: all.edu || [], answers,
+      resume: all.resume || null, resumeHere: resumeInfo || null };
   }
 
   const saveProfile = p => area.set({ profile: p });
   const saveCustom = c => area.set({ custom: c });
+  // Jobs and schools, in your priority order. Each list is one sync item (8 KB).
+  const saveWork = w => area.set({ work: w });
+  const saveEdu = e => area.set({ edu: e });
   const saveAnswer = ({ id, q, a }) => area.set({ ["ans:" + id]: { q, a, t: Date.now() } });
   const deleteAnswer = id => area.remove("ans:" + id);
 
@@ -24,8 +28,9 @@ var AK = (() => {
   const PER_ITEM = 8192, TOTAL = 102400, MAX_ITEMS = 512;
   const sizeOf = (k, v) => new TextEncoder().encode(k + JSON.stringify(v)).length;
 
-  async function replaceAll({ profile = {}, custom = [], answers = [] }) {
-    const items = { profile, custom: Array.isArray(custom) ? custom : [] };
+  async function replaceAll({ profile = {}, custom = [], work = [], edu = [], answers = [] }) {
+    const list = x => (Array.isArray(x) ? x : []);
+    const items = { profile, custom: list(custom), work: list(work), edu: list(edu) };
     for (const x of Array.isArray(answers) ? answers : []) {
       items["ans:" + (x.id || newId())] = { q: String(x.q || ""), a: String(x.a || ""), t: x.t || Date.now() };
     }
@@ -33,7 +38,7 @@ var AK = (() => {
     let total = 0;
     for (const [k, v] of Object.entries(items)) {
       const size = sizeOf(k, v);
-      if (size > PER_ITEM) throw new Error(k.startsWith("ans:") ? `The saved answer “${items[k].q.slice(0, 40)}” is too long for sync storage (8 KB per answer).` : `The ${k} section is too big for sync storage (8 KB).`);
+      if (size > PER_ITEM) throw new Error(k.startsWith("ans:") ? `The saved answer “${items[k].q.slice(0, 40)}” is too long for sync storage (8 KB per answer).` : `The ${{ custom: "extra fields", work: "work history", edu: "education" }[k] || k} section is too big for sync storage (8 KB).`);
       total += size;
     }
     if (total > TOTAL) throw new Error(`The backup is ${(total / 1024).toFixed(0)} KB, more than the 100 KB sync storage holds.`);
@@ -109,6 +114,6 @@ var AK = (() => {
     await saveApps(apps);
   }
 
-  return { newId, load, saveProfile, saveCustom, saveAnswer, deleteAnswer, replaceAll, saveResume, loadResumeFile, removeResume,
+  return { newId, load, saveProfile, saveCustom, saveWork, saveEdu, saveAnswer, deleteAnswer, replaceAll, saveResume, loadResumeFile, removeResume,
     loadApps, saveApps, appsEnabled, setAppsEnabled, logApplication };
 })();

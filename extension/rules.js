@@ -30,8 +30,8 @@ var FIELDS = [
   { key: "github", label: "GitHub URL", group: "Links", p: 3, type: "url", re: /\bgit\s?hub\b/u },
   { key: "website", label: "Website or portfolio", group: "Links", p: 4, type: "url", ac: ["url"], re: /\b(website|portfolio|personal\s?(site|url|page)|blog|url)\b/u },
 
-  { key: "currentTitle", label: "Current job title", group: "Work", p: 13, ac: ["organization-title"], re: /\b(current|recent|present|latest)\s?(job\s?)?(title|role|position)\b|^(job\s?)?title$/u },
-  { key: "currentCompany", label: "Current company", group: "Work", p: 14, ac: ["organization"], re: /\b(current|recent|present|latest)\s?(company|employer)\b|^(company|employer)(\s?name)?$/u },
+  { key: "currentTitle", label: "Current job title", group: "Work", p: 13, ac: ["organization-title"], re: /\b(current|recent|present|latest)\s?(job\s?)?(title|role|position)\b|^(job\s?)?title$/u, ph: "Leave blank to use your first job" },
+  { key: "currentCompany", label: "Current company", group: "Work", p: 14, ac: ["organization"], re: /\b(current|recent|present|latest)\s?(company|employer)\b|^(company|employer)(\s?name)?$/u, ph: "Leave blank to use your first job" },
   { key: "yearsExperience", label: "Years of experience", group: "Work", p: 11, max: 40, re: /\byears?\b.*\bexperience\b|\bexperience\b.*\byears?\b/u, ph: "e.g. 5" },
   { key: "salary", label: "Expected salary", group: "Pay", p: 10, re: /\b(salary|compensation|ctc|pay\s?expectations?|ectc)\b/u, not: NOW, ph: "e.g. 120000" },
   { key: "salaryBreakdown", label: "Current pay breakdown", group: "Pay", p: 9.1, re: /\bbreak\s?(up|down)\b/u, not: EXPECTED, ph: "e.g. 18 LPA fixed + 2 LPA variable + ESOPs" },
@@ -71,12 +71,82 @@ function siteOf(host) {
 
 // Every value you've saved, for picking by hand when a field isn't recognised: profile
 // fields in settings order, then extra fields, then saved answers.
-function allDetails({ profile = {}, custom = [], answers = [] }) {
+function allDetails({ profile = {}, custom = [], work = [], edu = [], answers = [] }) {
   const out = FIELDS.filter(f => profile[f.key]).map(f => ({ group: f.group, name: f.label, value: profile[f.key] }));
   if (!profile.fullName && profile.firstName && profile.lastName) {
     out.splice(2, 0, { group: "Basics", name: "Full name", value: `${profile.firstName} ${profile.lastName}` });
   }
+  work.forEach((j, i) => {
+    const n = `Job ${i + 1}`;
+    for (const [k, label] of [["company", "company"], ["title", "title"], ["location", "location"]]) if (j[k]) out.push({ group: "Work history", name: `${n} ${label}`, value: j[k] });
+    if (j.start) out.push({ group: "Work history", name: `${n} dates`, value: showSpan(j) });
+    if (j.description) out.push({ group: "Work history", name: `${n} description`, value: j.description });
+  });
+  edu.forEach((e, i) => {
+    const n = `Education ${i + 1}`;
+    for (const [k, label] of [["school", "school"], ["degree", "degree"], ["major", "field of study"], ["gpa", "grade"]]) if (e[k]) out.push({ group: "Education", name: `${n} ${label}`, value: e[k] });
+    const place = [e.city, e.state, e.country].filter(Boolean).join(", ");
+    if (place) out.push({ group: "Education", name: `${n} location`, value: place });
+    if (e.start || e.end) out.push({ group: "Education", name: `${n} dates`, value: showSpan(e) });
+  });
   for (const c of custom) if (c.value) out.push({ group: "Extra fields", name: c.label || "Extra field", value: c.value });
   for (const a of answers) if (a.a) out.push({ group: "Saved answers", name: a.q || "Saved answer", value: a.a });
   return out;
+}
+
+// ---------- Work history and education ----------
+// Fields in a form's "Experience" or "Education" section are matched to one entry of your
+// history instead of your profile, so a "Country" there means the job's or school's.
+var WORK_SECTION = /\b(work|employment|job|professional|career)\s?(history|experience|details)\b|\bexperience\b|\bemployment\b|\bemployer\b|\bprevious\s?(jobs?|roles?|positions?)\b/u;
+var EDU_SECTION = /\beducation\w*\b|\bacademic\w*\b|\bqualifications?\b|\bschools?\b|\buniversit(y|ies)\b|\bcolleges?\b/u;
+
+// Each part: what it's called in a review, and the label pattern that finds it in a section.
+var WORK_PARTS = [
+  { key: "current", label: "Currently work here", re: /\b(i\s?)?(currently|still)\s?(work|employed|working)\b|\bcurrent\s?(role|job|position|employer)\b|^current$/u },
+  // "From" and "To" only count at the start, so "willing to relocate" isn't an end date.
+  { key: "start", label: "Start date", re: /\b(start|began|joined|joining|beginning)\b|^from\b/u },
+  { key: "end", label: "End date", re: /\b(end|until|left|leaving|finish\w*)\b|^(to|till|through)\b/u },
+  { key: "description", label: "Description", re: /\b(description|responsibilit\w*|summary|duties|achievements?|accomplishments?|what\s?you\s?did)\b/u },
+  { key: "company", label: "Company", re: /\b(company|employer|organi[sz]ation|firm|business)\b/u },
+  { key: "title", label: "Job title", re: /\b(job\s?)?(title|role|position|designation)\b/u },
+  { key: "location", label: "Location", re: /\b(location|city|place|based)\b/u }
+];
+var EDU_PARTS = [
+  { key: "current", label: "Currently studying here", re: /\b(i\s?)?(currently|still)\s?(stud\w*|enrolled|attend\w*)\b|\bcurrently\s?(here|enrolled)\b/u },
+  { key: "start", label: "Start date", re: /\b(start|began|joined|beginning)\b|^from\b/u },
+  { key: "end", label: "End date", re: /\b(end|until|finish\w*|graduat\w*|completion|completed|passing|passed|pass\s?out)\b|^(to|till|through)\b/u },
+  { key: "school", label: "School", re: /\b(school|universit\w*|college|institut\w*|academy|alma\s?mater)\b/u },
+  { key: "degree", label: "Degree", re: /\b(degree|qualification|diploma|level\s?of\s?(education|study)|program(me)?)\b/u },
+  { key: "major", label: "Field of study", re: /\b(major|discipline|field\s?of\s?study|subject|speciali[sz]ation|stream|branch|course|area\s?of\s?study|concentration)\b/u },
+  { key: "gpa", label: "Grade", re: /\b(gpa|cgpa|grade|percentage|marks|score|class\s?of\s?degree)\b/u },
+  { key: "city", label: "City", re: /\b(city|town|location)\b/u },
+  { key: "state", label: "State", re: /\b(state|province|region)\b/u },
+  { key: "country", label: "Country", re: /\bcountry\b/u }
+];
+// Outside a section, only labels this specific are taken to mean your first school.
+var EDU_ALONE = /\b(school|universit\w*|college|institut\w*)\b|\bdegree\b|\b(major|discipline|field\s?of\s?study)\b|\b(gpa|cgpa)\b|\bgraduat\w*\s?(date|year)\b|\byear\s?of\s?graduation\b/u;
+
+// Degree names vary ("B.Tech", "Bachelor of Science"); dropdowns usually list levels.
+function degreeLevel(degree) {
+  const d = normalize(degree).replace(/\s+/g, "");
+  if (/phd|doctor|dphil/.test(d)) return "Doctorate";
+  if (/master|mtech|msc|mba|^ms$|^ma$|mca|mcom|meng|pgdm|postgrad/.test(d)) return "Master";
+  if (/bachelor|btech|bsc|^ba$|^be$|bcom|bca|beng|bba|undergrad/.test(d)) return "Bachelor";
+  if (/associate/.test(d)) return "Associate";
+  if (/diploma/.test(d)) return "Diploma";
+  if (/highschool|secondary|12th|hsc/.test(d)) return "High School";
+  return "";
+}
+
+var MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+// "2021-05" or "2021" → "May 2021" / "2021", for reviews and lists.
+function showMonth(ym) {
+  if (!ym) return "";
+  const [y, m] = String(ym).split("-");
+  return m ? `${MONTHS[+m - 1].slice(0, 3)} ${y}` : y;
+}
+function showSpan(entry) {
+  const end = entry.current ? "present" : showMonth(entry.end);
+  return [showMonth(entry.start), end].filter(Boolean).join(" – ");
 }

@@ -8,7 +8,7 @@
   const TEXTY = new Set(["", "text", "email", "tel", "url", "number", "search"]);
   const STOP = new Set("the and for you your are with this that have what why how our will would which who from about please describe tell any can into been was were has had not but all more most very also its".split(" "));
 
-  let data = { profile: {}, custom: [], answers: [] };
+  let data = { profile: {}, custom: [], work: [], edu: [], answers: [] };
   let forced = false;
   let filling = false;
   let jobCache = { url: "", val: false };
@@ -107,6 +107,10 @@
     if (m.key === "fullName") return full;
     if (m.key === "firstName") return p.firstName || full.split(" ")[0] || "";
     if (m.key === "lastName") return p.lastName || full.split(" ").slice(1).join(" ");
+    // With no current company or title in the profile, use your first job.
+    const job = data.work[0] || {};
+    if (m.key === "currentCompany") return p.currentCompany || job.company || "";
+    if (m.key === "currentTitle") return p.currentTitle || job.title || "";
     return p[m.key] || "";
   }
 
@@ -208,12 +212,142 @@
   let nextId = 1;
   const idOf = el => { if (!ids.has(el)) ids.set(el, nextId++); return ids.get(el); };
 
+  // ---------- Work history and education ----------
+  const HEADING = "h1, h2, h3, h4, h5, h6, legend, [role='heading']";
+  const sectionOfText = t => (EDU_SECTION.test(t) ? "edu" : WORK_SECTION.test(t) ? "work" : null);
+
+  // Which history section a field sits in: the nearest heading above it ("Work experience",
+  // "Education"), or a wrapper that names itself that way (aria-label, legend, or the ids
+  // and automation ids sites like Workday use). Wrappers holding most of the form are
+  // ignored, so a page-wide class like "candidate-experience" doesn't count.
+  function sectionKind(el) {
+    for (let n = el.parentElement, i = 0; n && n !== document.body && i < 12; n = n.parentElement, i++) {
+      const fields = n.querySelectorAll("input:not([type=hidden]), select, textarea").length;
+      if (fields > 40) return null;
+      const named = [n.getAttribute("aria-label"), byIds(n.getAttribute("aria-labelledby")), n.id, n.getAttribute("data-automation-id")];
+      const legend = n.querySelector(":scope > legend, :scope > " + HEADING.split(", ").join(", :scope > "));
+      if (legend) named.push(textOf(legend));
+      const kind = sectionOfText(normalize(named.filter(Boolean).join(" ")));
+      if (kind) return kind;
+      // A wrapper with its own heading ("Personal details") is its own section.
+      if (legend) return null;
+      // Otherwise the closest heading among earlier siblings decides. Reaching an earlier
+      // section (a block with its own heading and fields) means this field has no heading.
+      for (let sib = n.previousElementSibling, j = 0; sib && j < 15; sib = sib.previousElementSibling, j++) {
+        const head = sib.matches(HEADING) ? sib : sib.querySelector(HEADING);
+        if (!head) continue;
+        if (sib.querySelector("input, select, textarea")) return null;
+        return sectionOfText(normalize(textOf(head)));
+      }
+    }
+    return null;
+  }
+
+  // Index from names like experience[1][company] or ids like workExperience-2.
+  function nameIndex(el) {
+    const m = (el.name || "").match(/(?:\[|_|\.)(\d{1,2})(?:\]|_|\.|$)/);
+    if (m) return +m[1];
+    const box = el.closest('[data-automation-id*="xperience-" i], [data-automation-id*="ducation-" i]');
+    const a = box && box.getAttribute("data-automation-id").match(/-(\d{1,2})\b/);
+    return a ? +a[1] : null;
+  }
+
+  // Finds every field that belongs to a job or school entry and which entry it is.
+  // Entries are numbered in page order: the first job slot gets your first job.
+  function historySlots() {
+    const slots = new Map();
+    const byKind = { work: [], edu: [] };
+    for (const el of document.querySelectorAll("input, textarea, select")) {
+      const type = (el.type || "").toLowerCase();
+      if (el.disabled || (el.tagName === "INPUT" && !TEXTY.has(type) && type !== "checkbox" && type !== "month" && type !== "date")) continue;
+      const label = labelFor(el);
+      const hints = hintsFor(el, label);
+      let kind = sectionKind(el);
+      const own = normalize(label) || hints[0] || "";
+      // Outside a history section, only unmistakable school labels count (first school).
+      if (!kind && !EDU_ALONE.test(own)) continue;
+      kind = kind || "edu";
+      const parts = kind === "work" ? WORK_PARTS : EDU_PARTS;
+      const part = parts.find(p => p.re.test(own)) || parts.find(p => hints.some(h => p.re.test(h)));
+      if (!part) continue;
+      if (type === "checkbox" && part.key !== "current") continue;
+      byKind[kind].push({ el, part, hints, index: nameIndex(el) });
+    }
+    for (const [kind, list] of Object.entries(byKind)) {
+      if (!list.length) continue;
+      const indexed = list.every(f => f.index != null);
+      const ranks = [...new Set(list.map(f => f.index))].sort((a, b) => a - b);
+      const anchorKey = kind === "work" ? (list.some(f => f.part.key === "company") ? "company" : "title")
+        : (list.some(f => f.part.key === "school") ? "school" : "degree");
+      const anchors = list.filter(f => f.part.key === anchorKey).map(f => f.el);
+      // Each anchor's entry box: the biggest wrapper that holds no other anchor.
+      const boxes = anchors.map(a => {
+        let box = a;
+        while (box.parentElement && box.parentElement !== document.body && !anchors.some(o => o !== a && box.parentElement.contains(o))) box = box.parentElement;
+        return box;
+      });
+      for (const f of list) {
+        let idx = 0;
+        if (indexed) idx = ranks.indexOf(f.index);
+        else if (anchors.length > 1) {
+          const inBox = boxes.findIndex(b => b.contains(f.el));
+          idx = inBox >= 0 ? inBox
+            : Math.max(0, anchors.filter(a => a.compareDocumentPosition(f.el) & Node.DOCUMENT_POSITION_FOLLOWING).length - 1);
+        }
+        slots.set(f.el, { kind, idx, part: f.part, hints: f.hints });
+      }
+    }
+    return slots;
+  }
+
+  // A "2021-05" (or "2021") date in whatever shape this field wants.
+  function dateFor(ym, el, hints) {
+    if (!ym) return "";
+    const [y, m] = String(ym).split("-");
+    const ph = (el.getAttribute("placeholder") || "").toLowerCase();
+    const h = ` ${hints.join(" ")} ${normalize(ph)} `;
+    const wantsMonth = /\bmonth\b|\bmm\b/.test(h), wantsYear = /\byear\b|\byyyy\b|\byy\b/.test(h);
+    if (el.type === "month") return m ? `${y}-${m}` : "";
+    if (el.type === "date") return `${y}-${m || "01"}-01`;
+    if (wantsMonth && !wantsYear) return m ? (el.tagName === "SELECT" || isCombo(el) ? MONTHS[+m - 1] : m) : "";
+    if (wantsYear && !wantsMonth) return y;
+    if (!m) return y;
+    if (/yyyy\s?-\s?mm/.test(ph)) return `${y}-${m}`;
+    if (/mm\s?\/\s?yy(?!yy)/.test(ph)) return `${m}/${y.slice(2)}`;
+    return `${m}/${y}`;
+  }
+
+  function historyValue(slot, el) {
+    const entry = (slot.kind === "work" ? data.work : data.edu)[slot.idx];
+    if (!entry) return "";
+    const k = slot.part.key;
+    if (k === "current") return entry.current ? "Yes" : "";
+    if (k === "start") return dateFor(entry.start, el, slot.hints);
+    if (k === "end") return entry.current ? "" : dateFor(entry.end, el, slot.hints);
+    return entry[k] || "";
+  }
+
+  // A month dropdown might list "May", "05" or "5".
+  function monthOption(select, name) {
+    const n = MONTHS.indexOf(name) + 1;
+    return [...select.options].find(o => normalize(o.text).startsWith(name.slice(0, 3).toLowerCase()) || (o.value && +o.value === n && /^\d+$/.test(o.value)) || +o.text === n);
+  }
+
   // Every field on the page we know how to fill and that is still empty.
   function scan() {
     const out = [];
     const groups = new Map();
+    const slots = data.work.length || data.edu.length ? historySlots() : new Map();
+    const slotName = s => `${s.kind === "work" ? "Job" : "Education"} ${s.idx + 1} · ${s.part.label}`;
     for (const el of document.querySelectorAll("input, textarea, select")) {
       if (el.disabled) continue;
+      const slot = slots.get(el);
+      if (el.tagName === "INPUT" && (el.type || "").toLowerCase() === "checkbox") {
+        // Only "I currently work/study here" boxes are ticked, and only for a current entry.
+        if (!slot || el.checked || !historyValue(slot, el)) continue;
+        out.push({ id: idOf(el), kind: "check", el, field: slotName(slot), label: labelFor(el), value: "on", shown: "Yes", hidden: !radioSeen(el) });
+        continue;
+      }
       if (el.tagName === "INPUT" && (el.type || "").toLowerCase() === "file") {
         const r = data.resumeHere;
         if (!r || el.files.length) continue;
@@ -234,22 +368,28 @@
         groups.get(k).push(el);
         continue;
       }
-      if (!isField(el) || !visible(el)) continue;
+      const dated = el.tagName === "INPUT" && /^(month|date)$/.test(el.type);
+      if (!(isField(el) || (dated && slot && !el.readOnly)) || !visible(el)) continue;
       const label = labelFor(el);
-      if (el.tagName === "TEXTAREA" && label.length > 40) continue;
-      const m = classify(hintsFor(el, label), el);
-      const value = valueFor(m);
+      if (el.tagName === "TEXTAREA" && label.length > 40 && !slot) continue;
+      // A field in a job or school entry takes that entry's value, never your profile's:
+      // a third job's "City" stays empty rather than getting your home city.
+      const m = slot ? { key: "history", name: slotName(slot) } : classify(hintsFor(el, label), el);
+      const value = slot ? historyValue(slot, el) : valueFor(m);
       if (!value) continue;
       // A <label> wrapped around a <select> also contains every option's text; drop it for display.
       const asks = el.tagName === "SELECT" ? clean([...el.options].reduce((t, o) => t.replace(clean(o.text), ""), label)) : label;
       const base = { id: idOf(el), el, field: m.name, label: asks, hidden: concealed(el) };
       if (isCombo(el)) {
         if (comboHasValue(el) || el.value.trim()) continue;
-        out.push({ ...base, kind: "combo", value, shown: value, hidden: !shownNearby(el) });
+        out.push({ ...base, kind: "combo", value, alt: slot && slot.part.key === "degree" ? degreeLevel(value) : "", shown: value, hidden: !shownNearby(el) });
       } else if (el.tagName === "SELECT") {
         if (el.selectedIndex > 0 && el.value) continue;
-        const option = pickOption([...el.options].map(o => ({ label: o.text, o })), value);
-        if (option) out.push({ ...base, kind: "select", value: option.o.value, shown: option.o.text });
+        const opts = [...el.options].map(o => ({ label: o.text, o }));
+        const level = slot && slot.part.key === "degree" && degreeLevel(value);
+        const option = MONTHS.includes(value) ? { o: monthOption(el, value) }
+          : pickOption(opts, value) || (level ? pickOption(opts, level) : null);
+        if (option && option.o) out.push({ ...base, kind: "select", value: option.o.value, shown: option.o.text });
       } else if (!el.value.trim()) {
         out.push({ ...base, kind: "text", value, shown: value });
       }
@@ -285,7 +425,7 @@
     setTimeout(() => { [el.style.outline, el.style.outlineOffset] = prev; }, 2500);
   }
 
-  const flashTarget = it => (it.kind === "radio" && it.el.labels && it.el.labels[0] ? it.el.labels[0] : it.el);
+  const flashTarget = it => ((it.kind === "radio" || it.kind === "check") && it.el.labels && it.el.labels[0] ? it.el.labels[0] : it.el);
   let lastFill = []; // what the latest fill changed, for Undo
 
   // Puts the resume into an upload field, the same way choosing it yourself would.
@@ -420,12 +560,12 @@
       } else if (it.kind === "combo") {
         let ok = false;
         try {
-          ok = await chooseOption(it.el, it.value);
+          ok = await chooseOption(it.el, it.value) || (!!it.alt && await chooseOption(it.el, it.alt));
         } catch (e) {
           console.warn("[Apply Kit]", e);
         }
         if (!ok) { missed.push(it); continue; }
-      } else if (it.kind === "radio") it.el.click();
+      } else if (it.kind === "radio" || it.kind === "check") it.el.click();
       else setValue(it.el, it.value);
       it.el.dispatchEvent(new Event("blur"));
       flash(flashTarget(it));
@@ -448,7 +588,10 @@
     let n = 0;
     for (const it of lastFill) {
       if (!it.el.isConnected && it.kind !== "combo") continue;
-      if (it.kind === "radio") {
+      if (it.kind === "check") {
+        if (!it.el.checked) continue;
+        it.el.click();
+      } else if (it.kind === "radio") {
         if (!it.el.checked) continue;
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked").set.call(it.el, false);
         it.el.dispatchEvent(new Event("input", { bubbles: true }));
