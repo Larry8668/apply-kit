@@ -474,13 +474,22 @@
     if (!props) return false;
     let options = Array.isArray(props.options) ? [...props.options] : [];
     if (!options.length && typeof props.loadOptions === "function") {
-      // Options that come from a search as you type, like a city lookup.
+      // Options that come from a search as you type, like a city or school lookup. Two styles:
+      // react-select's own, loadOptions(search, callback) giving a list, and the paginated
+      // one Greenhouse uses, loadOptions(search, loadedSoFar, { page }) giving { options }.
+      const unwrap = r => (r && Array.isArray(r.options) ? r.options : r && typeof r.length === "number" ? r : []);
       try {
         options = await new Promise((resolve, reject) => {
-          const callback = typeof exportFunction === "function" ? exportFunction(list => resolve(list || []), window) : list => resolve(list || []);
-          const result = props.loadOptions(value, callback);
-          if (result && typeof result.then === "function") result.then(list => resolve(list || []), reject);
-          setTimeout(() => resolve([]), 6000);
+          // In Firefox, page code can only call functions exported to it, including the
+          // callbacks handed to the page's own promise.
+          const toPageFn = fn => (typeof exportFunction === "function" ? exportFunction(fn, window) : fn);
+          const done = toPageFn(list => resolve(unwrap(list)));
+          const fail = toPageFn(e => reject(e));
+          const result = props.loadOptions.length >= 3
+            ? props.loadOptions(value, toPage([]), toPage({ page: 1 }))
+            : props.loadOptions(value, done);
+          if (result && typeof result.then === "function") result.then(done, fail);
+          setTimeout(() => resolve([]), 8000);
         });
         options = [...options];
       } catch {
@@ -859,7 +868,12 @@
   let detailsOpen = false; // "All my details" expanded in the suggestion box
 
   function getUI() {
-    if (ui) return ui;
+    if (ui) {
+      // Sites that take over the whole document when their scripts load (Remix, Next.js)
+      // can remove our box with everything else they didn't create; put it back.
+      if (!ui.host.isConnected) document.documentElement.appendChild(ui.host);
+      return ui;
+    }
     const host = document.createElement("div");
     host.style.cssText = "all:initial;position:absolute;top:0;left:0;width:0;height:0;z-index:2147483647;";
     const root = host.attachShadow({ mode: "closed" });
