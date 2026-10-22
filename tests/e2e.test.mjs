@@ -72,13 +72,50 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>Apply: Eng
   </script>
 </body></html>`;
 
+// Work history and education: two job slots and one school, laid out like Greenhouse (indexed
+// names, month menus, year boxes) next to a home address that must keep using the profile.
+const WORK = [
+  { company: "Analytical Engines", title: "Principal Engineer", location: "London", start: "2021-04", current: true, description: "Led the difference engine team." },
+  { company: "Babbage & Co", title: "Engineer", location: "Cambridge", start: "2017-09", end: "2021-03" },
+  { company: "Third Job Ltd", title: "Intern", start: "2016-06", end: "2016-08" }
+];
+const EDU = [{ school: "University of London", degree: "B.Sc. Mathematics", major: "Mathematics", gpa: "First", city: "London", country: "United Kingdom", start: "2013-09", end: "2016-06" }];
+const MONTH_OPTS = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+  .map((m, i) => `<option value="${i || ""}">${m || "Month"}</option>`).join("");
+const job = i => `
+  <div class="job">
+    <label>Company <input name="job[${i}][company]"></label>
+    <label>Title <input name="job[${i}][title]"></label>
+    <label>Start date month <select name="job[${i}][start_month]">${MONTH_OPTS}</select></label>
+    <label>Start date year <input name="job[${i}][start_year]"></label>
+    <label>End date month <select name="job[${i}][end_month]">${MONTH_OPTS}</select></label>
+    <label>End date year <input name="job[${i}][end_year]"></label>
+    <label><input type="checkbox" name="job[${i}][current]"> I currently work here</label>
+  </div>`;
+const HISTORY_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>Apply: Engineer</title>
+<style>body { font: 16px sans-serif; margin: 24px; } label { display: block; margin: 8px 0; } input, select { display: block; width: 280px; height: 30px; }</style>
+</head><body>
+  <h1>Apply for Engineer</h1>
+  <label>City <input id="home-city"></label>
+  <label>Current company <input id="current-company"></label>
+  <h2>Work experience</h2>
+  ${job(0)}${job(1)}
+  <h2>Education</h2>
+  <label>School <input id="school"></label>
+  <label>Degree <select id="degree"><option value="">Select</option><option>Associate's Degree</option><option>Bachelor's Degree</option><option>Master's Degree</option></select></label>
+  <label>Discipline <input id="discipline"></label>
+  <label>City <input id="edu-city"></label>
+  <label>Country <select id="edu-country"><option value="">Select</option><option>India</option><option>United Kingdom</option><option>United States</option></select></label>
+  <label>Graduation year <input id="grad-year" placeholder="YYYY"></label>
+</body></html>`;
+
 const ID_BY_KEY = { firstName: "fn", email: "em", phone: "ph", city: "ci", currentCompany: "co", lastName: "ln", postalCode: "pc", state: "st", github: "gh", website: "ws", salary: "sa", linkedin: "li" };
 
 let server, base;
 const builds = [];
 
 before(async () => {
-  server = createServer((req, res) => { res.setHeader("content-type", "text/html"); res.end(PAGE); });
+  server = createServer((req, res) => { res.setHeader("content-type", "text/html"); res.end(req.url.startsWith("/history") ? HISTORY_PAGE : PAGE); });
   await new Promise(r => server.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${server.address().port}`;
 });
@@ -104,7 +141,7 @@ function buildCopy({ openShadow }) {
   return dir;
 }
 
-async function startFirefox(extDir) {
+async function startFirefox(extDir, extra = {}) {
   const options = new firefox.Options()
     .setPreference("extensions.webextensions.uuids", JSON.stringify({ [EXT_ID]: UUID }))
     .windowSize({ width: 1280, height: 900 });
@@ -114,11 +151,11 @@ async function startFirefox(extDir) {
   const service = new firefox.ServiceBuilder().addArguments("--allow-system-access");
   const driver = await new Builder().forBrowser("firefox").setFirefoxOptions(options).setFirefoxService(service).build();
   await driver.installWebExtension(extDir, { permanent: false });
-  await seedProfile(driver);
+  await seedProfile(driver, extra);
   return driver;
 }
 
-async function seedProfile(driver) {
+async function seedProfile(driver, extra = {}) {
   const first = await driver.getWindowHandle();
   await driver.setContext(firefox.Context.CHROME);
   await driver.executeScript(
@@ -130,10 +167,10 @@ async function seedProfile(driver) {
   await driver.wait(async () => (await driver.getCurrentUrl()).startsWith("moz-extension:") &&
     (await driver.executeScript("return document.readyState")) === "complete", 10000, "Settings page never loaded");
   const error = await driver.executeAsyncScript(`
-    const [profile, done] = arguments;
+    const [profile, extra, done] = arguments;
     const api = window.browser || window.wrappedJSObject.browser;
-    api.storage.sync.clear().then(() => api.storage.sync.set({ profile })).then(() => done(null), e => done(String(e)));`,
-    PROFILE);
+    api.storage.sync.clear().then(() => api.storage.sync.set({ profile, ...extra })).then(() => done(null), e => done(String(e)));`,
+    PROFILE, extra);
   assert.equal(error, null, "couldn't seed the profile");
   await driver.close();
   await driver.switchTo().window(first);
@@ -222,3 +259,46 @@ test("the page itself can't reach the panel, the extension's code, or profile va
     await driver.quit();
   }
 });
+
+// With "Current company" left blank in the profile, the form's "Current company" gets job 1's.
+for (const [name, currentCompany, expected] of [
+  ["work history and education fill their own sections, in order, without touching the home address", PROFILE.currentCompany, PROFILE.currentCompany],
+  ["a blank current company in the profile falls back to the first job", "", WORK[0].company]
+]) {
+  test(name, async () => {
+    const driver = await startFirefox(buildCopy({ openShadow: true }), { profile: { ...PROFILE, currentCompany }, work: WORK, edu: EDU });
+    try {
+      await driver.get(`${base}/history/apply`);
+      await driver.wait(async () => driver.executeScript(`
+        const host = [...document.documentElement.children].find(n => n.shadowRoot && n.shadowRoot.querySelector(".fab"));
+        return !!host && !host.shadowRoot.querySelector(".fab").hidden;`), 10000, "Review button never appeared");
+      await driver.executeScript(clickInPanel(".fab"));
+      await driver.wait(async () => driver.executeScript(READ_PANEL), 5000, "Review panel never opened");
+      await driver.executeScript(clickInPanel(".bar .btn.main"));
+      await driver.wait(async () => {
+        const p = await driver.executeScript(READ_PANEL);
+        return p && p.title && p.title.startsWith("Filled");
+      }, 15000, "Fill never finished");
+
+      const got = await driver.executeScript(`
+        const v = s => { const el = document.querySelector(s); return el.type === "checkbox" ? el.checked : el.tagName === "SELECT" ? el.options[el.selectedIndex].text : el.value; };
+        const out = {};
+        for (const s of ["#home-city", "#current-company", "#school", "#degree", "#discipline", "#edu-city", "#edu-country", "#grad-year"]) out[s] = v(s);
+        for (const i of [0, 1]) for (const k of ["company", "title", "start_month", "start_year", "end_month", "end_year", "current"]) out[i + "." + k] = v('[name="job[' + i + '][' + k + ']"]');
+        return out;`);
+      assert.deepEqual(got, {
+        "#home-city": PROFILE.city, // the profile's city, not a job's or school's
+        "#current-company": expected,
+        "#school": "University of London", "#degree": "Bachelor's Degree", "#discipline": "Mathematics",
+        "#edu-city": "London", "#edu-country": "United Kingdom", "#grad-year": "2016",
+        // Job 1 is current: its box is ticked and its end date left empty. Job 3 has no slot.
+        "0.company": "Analytical Engines", "0.title": "Principal Engineer", "0.start_month": "April", "0.start_year": "2021",
+        "0.end_month": "Month", "0.end_year": "", "0.current": true,
+        "1.company": "Babbage & Co", "1.title": "Engineer", "1.start_month": "September", "1.start_year": "2017",
+        "1.end_month": "March", "1.end_year": "2021", "1.current": false
+      });
+    } finally {
+      await driver.quit();
+    }
+  });
+}
