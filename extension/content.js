@@ -135,13 +135,16 @@
     el.tagName === "TEXTAREA" || el.tagName === "SELECT" ||
     (el.tagName === "INPUT" && TEXTY.has((el.getAttribute("type") || "").toLowerCase())));
 
-  // Rendered, but you couldn't actually see it: tiny, see-through, pushed off the page, or
-  // clipped away by a parent. A page can use fields like this to collect details you never
-  // meant to give it, so these are only filled if you tick them in the review panel.
+  // Rendered, but you couldn't actually see it: tiny, see-through, pushed off the page,
+  // clipped away, or covered by something else. A page can use fields like this to collect
+  // details you never meant to give it, so these are only filled if you tick them in the
+  // review panel.
   function concealed(el) {
     const r = el.getBoundingClientRect();
     if (r.width < 4 || r.height < 4) return true;
     if (r.right + scrollX <= 0 || r.bottom + scrollY <= 0) return true;
+    // Forms don't scroll sideways, so a field starting past the page's right edge is out of view.
+    if (r.left + scrollX >= document.documentElement.clientWidth) return true;
     let opacity = 1;
     for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
       const cs = getComputedStyle(n);
@@ -152,7 +155,24 @@
         if (r.right <= p.left || r.left >= p.right || r.bottom <= p.top || r.top >= p.bottom) return true;
       }
     }
-    return false;
+    return coveredUp(el, r);
+  }
+
+  // Asks the browser what's on top at a few points inside the field. If none of them is the
+  // field, its label, or our own box, something covers it or clip-path cuts it away. Only
+  // points on screen can be checked, so a field scrolled out of view is given the benefit.
+  function coveredUp(el, r) {
+    const vw = document.documentElement.clientWidth, vh = innerHeight;
+    const points = [[0.5, 0.5], [0.25, 0.5], [0.75, 0.5], [0.5, 0.25], [0.5, 0.75]]
+      .map(([fx, fy]) => [r.left + r.width * fx, r.top + r.height * fy])
+      .filter(([x, y]) => x >= 0 && y >= 0 && x < vw && y < vh);
+    if (!points.length) return false;
+    const own = n => n && (el.contains(n) || n.contains(el) && n.tagName === "LABEL" ||
+      [...(el.labels || [])].some(l => l.contains(n)) || (ui && n === ui.host));
+    return !points.some(([x, y]) => {
+      const top = document.elementFromPoint(x, y);
+      return own(top) || own(top && top.closest("label"));
+    });
   }
   // Styled radio buttons often hide the real input and show only the label.
   const radioSeen = r => [r, ...(r.labels || [])].some(n => visible(n) && !concealed(n));

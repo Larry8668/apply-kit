@@ -18,7 +18,7 @@ It's a personal project, built for one person's job search and shared in case it
 <img src="docs/screenshots/toolbar-menu.png" alt="The toolbar menu reviewing a whole page: the page itself and an embedded Greenhouse form start ticked, a hidden field is unticked, and an email field from an ad on another site is flagged 'Other site' and unticked." width="300" align="right">
 
 - **Review, then fill.** On pages that look like job applications (Greenhouse, Lever, Workday, Ashby, company career pages, and similar), a "Review N fields" button appears in the bottom-right corner. It opens a panel listing every field it would fill and the value it would use. Untick anything you don't want, tap the target icon to find a field on the page, then tap "Fill". Afterwards the panel shows what was filled, with Undo. Filled fields are highlighted in yellow. It never overwrites anything you've already typed, and it never submits the form.
-- **Hidden fields stay empty unless you tick them.** Fields you can't see (tiny, transparent, off-screen, or clipped away) are listed separately under "Hidden on the page" and start unticked, so a page can't quietly collect more than it shows.
+- **Hidden fields stay empty unless you tick them.** Fields you can't see (tiny, transparent, off-screen, clipped away, or covered by something else) are listed separately under "Hidden on the page" and start unticked, so a page can't quietly collect more than it shows.
 - **Resume.** Upload fields labelled resume or CV get your PDF, listed in the review panel like any other field. Add the PDF in settings, either by uploading it or from a link (Google Drive, Google Docs, Dropbox, or a direct PDF link). See [Resume](#resume).
 - **Pay details.** Current total pay, fixed, variable and stock parts, a free-text breakdown, and expected salary are separate fields, so "Current CTC" and "Expected CTC" each get the right number.
 - **Suggestions as you go.** When you tap into a field, a small box offers the matching profile value, plus up to three saved answers if the field is a longer question. Tap one to fill it, or ⧉ to copy it.
@@ -121,7 +121,8 @@ The extension lives in `extension/`. The repo root holds tooling only.
 | `updates.json` | Update manifest Firefox checks for new versions. Written by the release workflow. |
 | `docs/screenshots/` | Images used in this README. |
 | `package.json` | Dev scripts (see below). |
-| `.github/workflows/` | Lint on every push and PR; sign and release on demand. |
+| `tests/` | End-to-end tests in Firefox (`npm run test:e2e`). |
+| `.github/workflows/` | Lint and end-to-end tests on every push and PR; sign and release on demand. |
 | `.github/dependabot.yml` | Weekly update checks for `web-ext` and the GitHub Actions used in CI. |
 
 ## Development
@@ -133,6 +134,7 @@ Run `npm install` once, then from the repo root:
 | `npm run lint` | Checks the extension with Mozilla's linter, as a self-hosted add-on (so `update_url` is allowed). |
 | `npm start` | Opens desktop Firefox with the extension loaded. |
 | `npm run start:android -- --android-device=DEVICE_ID` | Runs it in Firefox on a USB-connected Android phone. Needs `adb` installed, USB debugging on in the phone's developer options, and "Remote debugging via USB" on in Firefox's settings. `adb devices` lists the device ID. If more than one Firefox build is installed, add `--firefox-apk=org.mozilla.firefox`. |
+| `npm run test:e2e` | Loads the extension into a headless Firefox and checks a test form: visible fields are ticked and filled, fields the page hides (tiny, see-through, off the page, covered, or clipped) start unticked and stay empty, Undo works, and the page's own scripts can't reach the panel or the extension. Needs Firefox installed; set `HEADED=1` to watch. |
 | `npm run sign` | Signs an unlisted `.xpi` into `web-ext-artifacts/`. Reads `WEB_EXT_API_KEY` and `WEB_EXT_API_SECRET` from the environment. |
 
 ## Signing locally

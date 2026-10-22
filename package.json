@@ -16,13 +16,15 @@
     "lint": "web-ext lint --self-hosted --source-dir extension",
     "start": "web-ext run --source-dir extension",
     "start:android": "web-ext run -t firefox-android --source-dir extension",
-    "sign": "web-ext sign --channel=unlisted --source-dir extension"
+    "sign": "web-ext sign --channel=unlisted --source-dir extension",
+    "test:e2e": "node --test tests/e2e.test.mjs"
   },
   "//": [
     "start:android needs adb and a USB-connected phone. Pass the device ID from `adb devices`: npm run start:android -- --android-device=DEVICE_ID",
     "sign reads WEB_EXT_API_KEY and WEB_EXT_API_SECRET from the environment. Never put the keys in this file."
   ],
   "devDependencies": {
+    "selenium-webdriver": "^4.51.0",
     "web-ext": "^10.8.0"
   }
 }
