@@ -24,7 +24,7 @@
     "sign reads WEB_EXT_API_KEY and WEB_EXT_API_SECRET from the environment. Never put the keys in this file."
   ],
   "devDependencies": {
-    "selenium-webdriver": "^4.51.0",
+    "selenium-webdriver": "^4.52.0",
     "web-ext": "^10.8.0"
   }
 }
